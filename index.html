@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aeron Builds</title>
+<link rel="stylesheet" href="style.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Pixelify+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<div class="game">
+
+  <canvas id="scene" aria-hidden="true"></canvas>
+  <div class="vignette" aria-hidden="true"></div>
+
+  <div class="world-info">
+    <p>Aeron Builds <span class="dim">v1.0.0</span></p>
+    <p>Biome: <span class="hl" id="biomeName">Cherry Grove</span></p>
+    <p id="clock">Day 8 — 08:14</p>
+  </div>
+
+  <button class="time-toggle" id="timeToggle" aria-label="Toggle day and night">
+    <span id="timeIcon">🌙</span>
+  </button>
+
+  <!-- ---------------- title screen ---------------- -->
+  <div class="title-screen" id="titleScreen">
+    <div class="logo-wrap">
+      <h1 class="mc-logo">Aeron Builds</h1>
+      <p class="splash" id="splash">Now with 100% more commits!</p>
+    </div>
+    <p class="mc-sub">Survival &nbsp;·&nbsp; Hard Mode</p>
+
+    <nav class="menu" aria-label="Main menu">
+      <button class="menu-btn" data-panel="profile">Enter World</button>
+      <button class="menu-btn" data-panel="projects">View Builds</button>
+      <button class="menu-btn" data-panel="advancements">Advancements</button>
+      <div class="menu-row">
+        <button class="menu-btn" data-panel="contact">Contact</button>
+        <button class="menu-btn" data-panel="levels">The End</button>
+      </div>
+      <button class="menu-btn" id="amuletBtn">Mine for the Amulet</button>
+    </nav>
+
+    <p class="menu-hint">Press <kbd>1</kbd>–<kbd>9</kbd> or click the hotbar</p>
+  </div>
+
+  <!-- ---------------- panels ---------------- -->
+  <div class="panel-stage">
+
+    <section class="panel" id="panel-profile" tabindex="-1">
+      <div class="panel-bar">
+        <h2>Player Profile</h2>
+        <button class="panel-close" aria-label="Back to menu">✕</button>
+      </div>
+      <div class="panel-body">
+        <div class="profile-top">
+          <div class="avatar" aria-hidden="true"></div>
+          <p class="profile-blurb">
+            Computer Science student, frontend developer and designer. I build
+            digital experiences that aren't just functional — they're memorable.
+          </p>
+        </div>
+        <dl class="stat-list">
+          <div class="stat"><dt>Class</dt><dd>Frontend &amp; App Developer</dd></div>
+          <div class="stat"><dt>Level</dt><dd>3rd Year — BS Computer Science</dd></div>
+          <div class="stat"><dt>Guild</dt><dd>De La Salle University – Dasmariñas</dd></div>
+          <div class="stat"><dt>Spawn</dt><dd>Cavite, Philippines</dd></div>
+          <div class="stat"><dt>Status</dt><dd class="online">Online — open to internships</dd></div>
+        </dl>
+        <button class="mc-btn mc-btn-primary" data-goto="projects">View Builds ▶</button>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-projects" tabindex="-1">
+      <div class="panel-bar">
+        <h2>Builds</h2>
+        <button class="panel-close" aria-label="Back to menu">✕</button>
+      </div>
+      <div class="panel-body">
+
+        <article class="item epic">
+          <div class="item-head">
+            <span class="item-icon">💰</span>
+            <div>
+              <h3>Badyet Hero</h3>
+              <p class="rarity">Epic · Team Project · Sep – Dec 2025</p>
+            </div>
+          </div>
+          <p class="lore">"A gamified personal finance tool with machine-learning spending
+            predictions and an NLP-powered assistant."</p>
+          <ul>
+            <li>Structured the application database</li>
+            <li>Wireframed and planned the UI in early design</li>
+            <li>Built frontend features and user-facing screens</li>
+          </ul>
+          <div class="tags"><span>React</span><span>Flask</span><span>Machine Learning</span><span>NLP</span></div>
+          <a class="mc-btn" href="https://github.com/Rons05" target="_blank" rel="noopener">Open Repo ↗</a>
+        </article>
+
+        <article class="item rare">
+          <div class="item-head">
+            <span class="item-icon">🍲</span>
+            <div>
+              <h3>Dishcovery</h3>
+              <p class="rarity">Rare · Concept &amp; Design · Jan – May 2025</p>
+            </div>
+          </div>
+          <p class="lore">"A recipe finder that recommends dishes from the ingredients
+            you already have."</p>
+          <ul>
+            <li>Conceptualized the ingredient-based recommendation idea</li>
+            <li>Designed the ingredient-to-recipe workflow</li>
+            <li>Planned Filipino-focused recipes and smarter suggestions</li>
+          </ul>
+          <div class="tags"><span>JavaScript</span><span>HTML/CSS</span><span>UX Design</span></div>
+          <a class="mc-btn" href="https://github.com/Rons05" target="_blank" rel="noopener">Open Repo ↗</a>
+        </article>
+
+      </div>
+    </section>
+
+    <section class="panel" id="panel-advancements" tabindex="-1">
+      <div class="panel-bar">
+        <h2>Advancements</h2>
+        <button class="panel-close" aria-label="Back to menu">✕</button>
+      </div>
+      <div class="panel-body">
+
+        <div class="adv goal">
+          <span class="adv-icon">🏥</span>
+          <div>
+            <p class="adv-kicker">Goal Reached</p>
+            <h3>Intern — Cavite East Asia Medical Center</h3>
+            <p class="adv-sub">Bacoor, Cavite · May 2023</p>
+            <ul>
+              <li>Organized and maintained patient medical records</li>
+              <li>Managed filing, sorting and retrieval of physical documents</li>
+              <li>Supported documentation and basic data encoding</li>
+              <li>Helped ensure confidentiality of patient information</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="adv">
+          <span class="adv-icon">📣</span>
+          <div>
+            <p class="adv-kicker">Advancement Made</p>
+            <h3>Member, Campaign Committee</h3>
+            <p class="adv-sub">DLSUD — CS Program Council · Sep 2025 – Present</p>
+          </div>
+        </div>
+
+        <div class="adv">
+          <span class="adv-icon">🤖</span>
+          <div>
+            <p class="adv-kicker">Advancement Made</p>
+            <h3>Tech Team — ICAI Conference on AI</h3>
+            <p class="adv-sub">DLSUD — CS Program Council · Feb 2026</p>
+          </div>
+        </div>
+
+        <div class="adv">
+          <span class="adv-icon">🎪</span>
+          <div>
+            <p class="adv-kicker">Advancement Made</p>
+            <h3>Booth Volunteer &amp; Content Contributor — Specifi</h3>
+            <p class="adv-sub">DLSUD — CS Program Council · Sep 2025</p>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section class="panel" id="panel-inventory" tabindex="-1">
+      <div class="panel-bar">
+        <h2>Inventory</h2>
+        <button class="panel-close" aria-label="Back to menu">✕</button>
+      </div>
+      <div class="panel-body">
+        <p class="inv-label">Languages</p>
+        <div class="inv-row">
+          <div class="cell" data-tip="HTML">🌐</div>
+          <div class="cell" data-tip="CSS">🎨</div>
+          <div class="cell" data-tip="JavaScript">⚡</div>
+          <div class="cell" data-tip="Java">☕</div>
+          <div class="cell" data-tip="Python">🐍</div>
+          <div class="cell" data-tip="Dart">🎯</div>
+        </div>
+        <p class="inv-label">Frameworks</p>
+        <div class="inv-row">
+          <div class="cell" data-tip="React">⚛️</div>
+          <div class="cell" data-tip="Flutter">🦋</div>
+          <div class="cell" data-tip="Flask">🧪</div>
+        </div>
+        <p class="inv-label">Developer Tools</p>
+        <div class="inv-row">
+          <div class="cell" data-tip="Git">🔧</div>
+          <div class="cell" data-tip="GitHub">🐙</div>
+          <div class="cell" data-tip="Supabase">🗄️</div>
+          <div class="cell" data-tip="Google Colab">📓</div>
+          <div class="cell" data-tip="VS Code">💻</div>
+          <div class="cell" data-tip="PyCharm">🪲</div>
+        </div>
+        <p class="inv-label">Design &amp; Media</p>
+        <div class="inv-row">
+          <div class="cell" data-tip="Figma">🖌️</div>
+          <div class="cell" data-tip="Canva">🖍️</div>
+          <div class="cell" data-tip="Photoshop">🖼️</div>
+          <div class="cell" data-tip="Premiere">🎬</div>
+          <div class="cell" data-tip="CapCut">✂️</div>
+          <div class="cell" data-tip="Filmora">🎞️</div>
+        </div>
+        <p class="inv-hint">Hover a slot to identify the item.</p>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-levels" tabindex="-1">
+      <div class="panel-bar">
+        <h2>The End — Education</h2>
+        <button class="panel-close" aria-label="Back to menu">✕</button>
+      </div>
+      <div class="panel-body">
+
+        <div class="level">
+          <div class="level-head">
+            <span class="lvl-badge">Lv. 2</span>
+            <div>
+              <h3>BS Computer Science</h3>
+              <p class="adv-sub">De La Salle University – Dasmariñas · 2023 – 2027</p>
+            </div>
+          </div>
+          <p class="level-detail">GPA 3.48 · Dean's Lister 2023–2024</p>
+          <div class="xp"><div class="xp-fill" style="width:62%"></div></div>
+          <p class="xp-cap">In progress — Year 3 of 4</p>
+        </div>
+
+        <div class="level">
+          <div class="level-head">
+            <span class="lvl-badge done">Lv. 1</span>
+            <div>
+              <h3>STEM Strand</h3>
+              <p class="adv-sub">Cavite School of Life – Bacoor Campus · 2018 – 2023</p>
+            </div>
+          </div>
+          <div class="xp"><div class="xp-fill" style="width:100%"></div></div>
+          <p class="xp-cap">Completed</p>
+        </div>
+
+      </div>
+    </section>
+
+    <section class="panel" id="panel-contact" tabindex="-1">
+      <div class="panel-bar">
+        <h2>Contact</h2>
+        <button class="panel-close" aria-label="Back to menu">✕</button>
+      </div>
+      <div class="panel-body">
+        <div class="book">
+          <p class="book-head">A message, sealed and sent:</p>
+          <p class="book-text">
+            I'm open to new projects, internship opportunities, or just talking tech.
+            Send a message and I'll write back.
+          </p>
+          <ul class="book-links">
+            <li>✉ <a href="mailto:aeronromasanta2004@gmail.com">aeronromasanta2004@gmail.com</a></li>
+            <li>🔗 <a href="https://www.linkedin.com/in/aeron" target="_blank" rel="noopener">linkedin.com/in/aeron</a></li>
+            <li>🐙 <a href="https://github.com/Rons05" target="_blank" rel="noopener">github.com/Rons05</a></li>
+            <li>📞 <a href="tel:+639196353126">+63 919 635 3126</a></li>
+          </ul>
+          <a class="mc-btn mc-btn-primary" href="mailto:aeronromasanta2004@gmail.com">Send Message ✉</a>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ---------------- advancement toast ---------------- -->
+  <div class="toast" id="toast" role="status" aria-live="polite">
+    <span class="toast-icon" id="toastIcon">💎</span>
+    <div>
+      <p class="toast-kicker" id="toastKicker">Advancement Made!</p>
+      <p class="toast-title" id="toastTitle">You found the Amulet</p>
+    </div>
+  </div>
+
+  <!-- ---------------- HUD ---------------- -->
+  <div class="hud">
+    <div class="hearts" id="hearts" aria-hidden="true"></div>
+
+    <div class="xp-strip">
+      <div class="xp-track"><div class="xp-bar" style="width:62%"></div></div>
+      <span class="xp-level">3</span>
+    </div>
+
+    <div class="hotbar" role="toolbar" aria-label="Portfolio sections">
+      <button class="slot is-selected" data-panel="profile" data-tip="Profile"><span>👤</span></button>
+      <button class="slot" data-panel="projects" data-tip="Builds" data-count="2"><span>⚔️</span></button>
+      <button class="slot" data-panel="advancements" data-tip="Advancements" data-count="4"><span>🏆</span></button>
+      <button class="slot" data-panel="inventory" data-tip="Inventory" data-count="21"><span>⛏️</span></button>
+      <button class="slot" data-panel="levels" data-tip="The End"><span>📚</span></button>
+      <button class="slot" data-panel="contact" data-tip="Contact"><span>✉️</span></button>
+      <a class="slot" href="https://github.com/Rons05" target="_blank" rel="noopener" data-tip="GitHub"><span>🐙</span></a>
+      <a class="slot" href="https://www.linkedin.com/in/aeron" target="_blank" rel="noopener" data-tip="LinkedIn"><span>🔗</span></a>
+      <a class="slot" href="mailto:aeronromasanta2004@gmail.com" data-tip="Email"><span>💎</span></a>
+    </div>
+  </div>
+
+  <p class="disclaimer">
+    Built by Aeron Romasanta · a fan homage, not affiliated with Mojang
+  </p>
+
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>

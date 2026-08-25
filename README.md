@@ -5,7 +5,7 @@ you see is generated at runtime: the 3D world, the block textures, and the
 character skin. No engine, no libraries, no image files — three files and about
 2,000 lines.
 
-**Live:** _(add your GitHub Pages URL here once it's deployed)_
+**Live:** https://rons05.github.io/Portfolio_MC/
 
 ---
 

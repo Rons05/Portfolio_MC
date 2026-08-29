@@ -1558,7 +1558,6 @@ function makeBeeTexture() {
     b: '#4a3019',   // brown tail, shaded
     D: '#20203a',   // eye socket
     E: '#63c6dc',   // eye
-    M: '#3d2612',   // muzzle
     W: '#eceadf',   // wing
     w: '#d2d0c4',   // wing, shaded
     K: '#241a10'    // black
@@ -1596,15 +1595,15 @@ function makeBeeTexture() {
   paint(20, 12, Array(8).fill(LENGTH));
   paint(32, 12, Array(8).fill('BBBBBBBB'));            // back
 
-  paint(12, 12, [                                      // face
+  paint(12, 12, [                                      // face: eyes only
     'GGGGGGGG',
     'GGGGGGGG',
     'GDDGGDDG',
     'GDEGGEDG',
-    'GEEMMEEG',
-    'GDDMMDDG',
-    'GGGMMGGG',
-    'GGGMMGGG'
+    'GEEGGEEG',
+    'GDDGGDDG',
+    'GGGGGGGG',
+    'GGGGGGGG'
   ]);
 
   // wing: 7 x 1 x 4, unwrapped at (0,24)

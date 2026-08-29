@@ -738,6 +738,14 @@ function skinPart(bx, by, bz, w, h, d, ou, ov, grow) {
    Mutates one shared object rather than allocating per frame. */
 /* armLz / armRz are shoulder roll — positive swings the +x arm outward
    and up, so the -x arm mirrors it with a negative value. */
+/* TARGET is what the animation asks for this instant; POSE is what the
+   model actually shows, easing toward it. Without that damping, cutting
+   one gesture short to start another snapped the arms through ~150° in a
+   single frame. */
+const TARGET = {
+  bob: 0, lean: 0, armL: 0, armR: 0, armLz: 0, armRz: 0,
+  legL: 0, legR: 0, headY: 0, headX: 0
+};
 const POSE = {
   bob: 0, lean: 0, armL: 0, armR: 0, armLz: 0, armRz: 0,
   legL: 0, legR: 0, headY: 0, headX: 0
@@ -755,28 +763,45 @@ const GESTURES = {
 
 let gesture = null;
 
+/* Idle personalities. Each section gets its own resting behaviour, and
+   because POSE eases toward TARGET the change blends rather than snaps.
+   rate scales the breathing/sway speed; armOut holds the arms away from
+   the body; headTilt biases the head up or down. */
+const IDLES = {
+  calm:    { rate: 1.00, bob: 0.40, lean: 0.020, armSwing: 0.11, legSwing: 0.05, headAmp: 0.18, headRate: 1.0, armOut: 0.00, headTilt: 0.00 },
+  eager:   { rate: 1.45, bob: 0.62, lean: 0.035, armSwing: 0.21, legSwing: 0.09, headAmp: 0.11, headRate: 1.7, armOut: 0.07, headTilt: -0.04 },
+  proud:   { rate: 0.72, bob: 0.34, lean: 0.012, armSwing: 0.05, legSwing: 0.02, headAmp: 0.24, headRate: 0.7, armOut: 0.34, headTilt: -0.10 },
+  curious: { rate: 1.10, bob: 0.44, lean: 0.028, armSwing: 0.09, legSwing: 0.04, headAmp: 0.46, headRate: 1.9, armOut: 0.05, headTilt: 0.06 },
+  drift:   { rate: 0.52, bob: 0.95, lean: 0.045, armSwing: 0.17, legSwing: 0.03, headAmp: 0.13, headRate: 0.5, armOut: 0.52, headTilt: -0.12 },
+  relaxed: { rate: 0.84, bob: 0.56, lean: 0.040, armSwing: 0.16, legSwing: 0.07, headAmp: 0.32, headRate: 0.9, armOut: 0.14, headTilt: 0.02 }
+};
+
+let idleStyle = 'calm';
+function setIdle(style) { if (IDLES[style]) idleStyle = style; }
+
 function playGesture(kind) {
   if (reduceMotion || !GESTURES[kind]) return;
   gesture = { kind, start: performance.now() };
 }
 
-function characterPose(t) {
+function characterPose(t, dt) {
   if (reduceMotion) return POSE;
 
-  const breathe = Math.sin(t / 1500);
-  const swing = Math.sin(t / 1750);
+  const I = IDLES[idleStyle] || IDLES.calm;
+  const breathe = Math.sin((t * I.rate) / 1500);
+  const swing = Math.sin((t * I.rate) / 1750);
 
   // bob upward only, so the feet never sink through the ground
-  POSE.bob = (breathe * 0.5 + 0.5) * 0.4;
-  POSE.lean = Math.sin(t / 2600) * 0.02;
-  POSE.armL = swing * 0.11;
-  POSE.armR = swing * -0.11;
-  POSE.armLz = 0;
-  POSE.armRz = 0;
-  POSE.legL = swing * -0.05;
-  POSE.legR = swing * 0.05;
-  POSE.headY = Math.sin(t / 2900) * 0.18;
-  POSE.headX = breathe * 0.05;
+  TARGET.bob = (breathe * 0.5 + 0.5) * I.bob;
+  TARGET.lean = Math.sin(t / 2600) * I.lean;
+  TARGET.armL = swing * I.armSwing;
+  TARGET.armR = swing * -I.armSwing;
+  TARGET.armLz = -I.armOut;
+  TARGET.armRz = I.armOut;
+  TARGET.legL = swing * -I.legSwing;
+  TARGET.legR = swing * I.legSwing;
+  TARGET.headY = Math.sin((t * I.headRate) / 2900) * I.headAmp;
+  TARGET.headX = breathe * 0.05 + I.headTilt;
 
   // idle wave roughly every 9s, unless a triggered gesture is running
   let e = 0, G = null;
@@ -800,20 +825,25 @@ function characterPose(t) {
 
   if (G) {
     const rest = 1 - e;
-    POSE.armL = G.lrx * e + POSE.armL * rest;
-    POSE.armR = G.rrx * e + POSE.armR * rest;
-    POSE.armLz = G.lrz * e;
-    POSE.armRz = G.rrz * e;
-    if (G.rock) POSE.armRz += Math.sin(t / 165) * 0.20 * e;
-    if (G.hop) POSE.bob += e * 1.4;
-    if (G.look) POSE.headX = 0.28 * e + POSE.headX * rest;
+    TARGET.armL = G.lrx * e + TARGET.armL * rest;
+    TARGET.armR = G.rrx * e + TARGET.armR * rest;
+    TARGET.armLz = G.lrz * e;
+    TARGET.armRz = G.rrz * e;
+    if (G.rock) TARGET.armRz += Math.sin(t / 165) * 0.20 * e;
+    if (G.hop) TARGET.bob += e * 1.4;
+    if (G.look) TARGET.headX = 0.28 * e + TARGET.headX * rest;
   }
 
+  /* Critically-ish damped follow, frame-rate independent so it eases the
+     same at 60Hz and 144Hz. Fast enough that the idle sine is untouched,
+     slow enough to round off any abrupt target change. */
+  const k = 1 - Math.pow(0.0000012, dt || 1 / 60);
+  for (const key in TARGET) POSE[key] += (TARGET[key] - POSE[key]) * k;
   return POSE;
 }
 
-function buildCharacter(amb, t) {
-  const P = characterPose(t || 0);
+function buildCharacter(amb, t, dt) {
+  const P = characterPose(t || 0, dt);
   const y = P.bob;
 
   // legs swing from the hips
@@ -1143,6 +1173,28 @@ function buildHouse(hx, hz, amb, p) {
   }
 }
 
+/* Shared canopy occupancy grid, stamped per tree so it never needs
+   clearing, plus the 64 possible face strings resolved up front so the
+   inner loop does no string building. */
+const LEAF_GEN = new Uint16Array(1 << 15);
+const LEAF_COL = new Uint8Array(1 << 15);
+let leafGen = 0;
+
+const FACE_MASKS = (function () {
+  const out = [];
+  for (let m = 0; m < 64; m++) {
+    let s = '';
+    if (m & 1) s += 't';
+    if (m & 2) s += 's';
+    if (m & 4) s += 'f';
+    if (m & 8) s += 'b';
+    if (m & 16) s += 'l';
+    if (m & 32) s += 'r';
+    out.push(s);
+  }
+  return out;
+})();
+
 function buildTree(tx, tz, rng, amb, p, big) {
   const h = big ? 9 + Math.floor(rng() * 3) : 5 + Math.floor(rng() * 4);
   for (let y = 0; y < h; y++) {
@@ -1154,13 +1206,46 @@ function buildTree(tx, tz, rng, amb, p, big) {
   const rz = (big ? 4.6 : 2.5) + rng() * 1.2;
   const cy = h + ry - 0.4;
   const reach = big ? 6 : 4;
+
+  /* Two passes. The first records which cells are leaves — it has to be
+     stored rather than recomputed, because the ragged edge uses random
+     jitter and so isn't a pure function of position. The second emits
+     only faces with no leaf behind them: the inside of a canopy is never
+     visible, and skipping it removes most of the world's geometry.
+     The occupancy grid is a shared typed array stamped with a per-tree
+     generation, so no allocation or clearing happens per tree. */
+  leafGen++;
+  const K = (dx, dy, dz) => ((dx + 8) << 10) | ((dy + 8) << 5) | (dz + 8);
+
   for (let dx = -reach; dx <= reach; dx++) {
     for (let dz = -reach; dz <= reach; dz++) {
       for (let dy = -3; dy <= 3; dy++) {
         const d = (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry) + (dz * dz) / (rz * rz);
         if (d > 1 + (rng() - 0.5) * 0.35) continue;
-        const c = p.leaf[Math.floor(rng() * p.leaf.length)];
-        box(tx + dx, cy + dy, tz + dz, tx + dx + 1, cy + dy + 1, tz + dz + 1, c, amb, 'tfbslr', TILE.LEAF);
+        const k = K(dx, dy, dz);
+        LEAF_GEN[k] = leafGen;
+        LEAF_COL[k] = Math.floor(rng() * p.leaf.length);
+      }
+    }
+  }
+
+  const solid = (dx, dy, dz) => LEAF_GEN[K(dx, dy, dz)] === leafGen;
+
+  for (let dx = -reach; dx <= reach; dx++) {
+    for (let dz = -reach; dz <= reach; dz++) {
+      for (let dy = -3; dy <= 3; dy++) {
+        const k = K(dx, dy, dz);
+        if (LEAF_GEN[k] !== leafGen) continue;
+        let m = 0;
+        if (!solid(dx, dy + 1, dz)) m |= 1;
+        if (!solid(dx, dy - 1, dz)) m |= 2;
+        if (!solid(dx, dy, dz + 1)) m |= 4;
+        if (!solid(dx, dy, dz - 1)) m |= 8;
+        if (!solid(dx - 1, dy, dz)) m |= 16;
+        if (!solid(dx + 1, dy, dz)) m |= 32;
+        if (!m) continue;
+        box(tx + dx, cy + dy, tz + dz, tx + dx + 1, cy + dy + 1, tz + dz + 1,
+            p.leaf[LEAF_COL[k]], amb, FACE_MASKS[m], TILE.LEAF);
       }
     }
   }
@@ -1195,14 +1280,14 @@ function allocCharacter(cap) {
   gl.bufferData(gl.ARRAY_BUFFER, charSink.uv.byteLength, gl.DYNAMIC_DRAW);
 }
 
-function updateCharacterMesh(t, amb) {
+function updateCharacterMesh(t, amb, dt) {
   if (!charSink.cap) allocCharacter(1024);
 
   // build straight into the typed arrays; grow and retry if it ever overflows
   for (let attempt = 0; attempt < 2; attempt++) {
     charSink.n = 0;
     sink = charSink;
-    buildCharacter(amb, t);
+    buildCharacter(amb, t, dt);
     sink = null;
     if (charSink.n <= charSink.cap) break;
     allocCharacter(charSink.n);
@@ -1335,7 +1420,7 @@ function render(t) {
   gl.drawArrays(gl.TRIANGLES, 0, indexCount);
 
   // character — re-posed each frame, skin texture with its cut-out layer
-  updateCharacterMesh(t, p.amb);
+  updateCharacterMesh(t, p.amb, dt);
   gl.bindTexture(gl.TEXTURE_2D, skinTex);
   gl.uniform1f(loc.uAlphaTest, 1.0);
   gl.bindBuffer(gl.ARRAY_BUFFER, charPosBuf);
@@ -1390,6 +1475,15 @@ function setBiome(id) {
 }
 
 /* A gesture to match each section, played on arrival. */
+const SECTION_IDLE = {
+  profile: 'calm',
+  projects: 'eager',
+  advancements: 'proud',
+  inventory: 'curious',
+  levels: 'drift',
+  contact: 'relaxed'
+};
+
 const SECTION_GESTURE = {
   profile: 'wave',
   projects: 'present',
@@ -1404,6 +1498,7 @@ function showPanel(name) {
   slots.forEach((s) => s.classList.toggle('is-selected', s.dataset.panel === name));
   titleScreen.classList.add('is-hidden');
   setBiome(SECTION_BIOME[name]);
+  setIdle(SECTION_IDLE[name]);
   playGesture(SECTION_GESTURE[name]);
   const open = document.getElementById(`panel-${name}`);
   if (open) open.focus({ preventScroll: true });

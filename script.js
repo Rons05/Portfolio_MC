@@ -736,7 +736,29 @@ function skinPart(bx, by, bz, w, h, d, ou, ov, grow) {
 
 /* Animation state, in skin-pixel space. `t` is milliseconds.
    Mutates one shared object rather than allocating per frame. */
-const POSE = { bob: 0, lean: 0, armL: 0, armR: 0, legL: 0, legR: 0, headY: 0, headX: 0, wave: 0 };
+/* armLz / armRz are shoulder roll — positive swings the +x arm outward
+   and up, so the -x arm mirrors it with a negative value. */
+const POSE = {
+  bob: 0, lean: 0, armL: 0, armR: 0, armLz: 0, armRz: 0,
+  legL: 0, legR: 0, headY: 0, headX: 0
+};
+
+/* One-shot gestures, played when the visitor changes section. Each is a
+   target pose; the envelope below eases into it and back out. */
+const GESTURES = {
+  wave:    { dur: 1700, lrz: 0,     rrz: 2.55, lrx: 0,    rrx: 0,    rock: true },
+  cheer:   { dur: 1500, lrz: -2.60, rrz: 2.60, lrx: 0,    rrx: 0,    hop: true },
+  present: { dur: 1500, lrz: -1.25, rrz: 1.25, lrx: -0.2, rrx: -0.2 },
+  inspect: { dur: 1700, lrz: -0.35, rrz: 0.35, lrx: -1.5, rrx: -1.5, look: true },
+  cast:    { dur: 1700, lrz: -1.95, rrz: 1.95, lrx: -0.3, rrx: -0.3 }
+};
+
+let gesture = null;
+
+function playGesture(kind) {
+  if (reduceMotion || !GESTURES[kind]) return;
+  gesture = { kind, start: performance.now() };
+}
 
 function characterPose(t) {
   if (reduceMotion) return POSE;
@@ -744,23 +766,49 @@ function characterPose(t) {
   const breathe = Math.sin(t / 1500);
   const swing = Math.sin(t / 1750);
 
-  // a wave every ~9s, eased in and out so it doesn't snap
-  const cycle = (t % 9000) / 9000;
-  let wave = 0;
-  if (cycle > 0.70 && cycle < 0.93) {
-    wave = Math.sin(((cycle - 0.70) / 0.23) * Math.PI);
-  }
-
   // bob upward only, so the feet never sink through the ground
   POSE.bob = (breathe * 0.5 + 0.5) * 0.4;
   POSE.lean = Math.sin(t / 2600) * 0.02;
   POSE.armL = swing * 0.11;
   POSE.armR = swing * -0.11;
+  POSE.armLz = 0;
+  POSE.armRz = 0;
   POSE.legL = swing * -0.05;
   POSE.legR = swing * 0.05;
   POSE.headY = Math.sin(t / 2900) * 0.18;
   POSE.headX = breathe * 0.05;
-  POSE.wave = wave;
+
+  // idle wave roughly every 9s, unless a triggered gesture is running
+  let e = 0, G = null;
+  if (gesture) {
+    const u = (t - gesture.start) / GESTURES[gesture.kind].dur;
+    if (u >= 1) gesture = null;
+    else {
+      G = GESTURES[gesture.kind];
+      // ease in, hold, ease out
+      const raw = u < 0.22 ? u / 0.22 : u < 0.68 ? 1 : 1 - (u - 0.68) / 0.32;
+      e = raw * raw * (3 - 2 * raw);
+    }
+  }
+  if (!G) {
+    const cycle = (t % 9000) / 9000;
+    if (cycle > 0.70 && cycle < 0.93) {
+      G = GESTURES.wave;
+      e = Math.sin(((cycle - 0.70) / 0.23) * Math.PI);
+    }
+  }
+
+  if (G) {
+    const rest = 1 - e;
+    POSE.armL = G.lrx * e + POSE.armL * rest;
+    POSE.armR = G.rrx * e + POSE.armR * rest;
+    POSE.armLz = G.lrz * e;
+    POSE.armRz = G.rrz * e;
+    if (G.rock) POSE.armRz += Math.sin(t / 165) * 0.20 * e;
+    if (G.hop) POSE.bob += e * 1.4;
+    if (G.look) POSE.headX = 0.28 * e + POSE.headX * rest;
+  }
+
   return POSE;
 }
 
@@ -787,16 +835,14 @@ function buildCharacter(amb, t) {
   skinPart(-4, 12 + y, -2, 8, 12, 4, 16, 32, 0.28);
   clearXform();
 
-  /* Arms swing from the shoulder; the right one lifts and waves on its
-     own cycle — rolled up beside the head, then rocked side to side. */
-  const waveRz = P.wave
-    ? 2.55 * P.wave + Math.sin((t || 0) / 165) * 0.20 * P.wave
-    : 0;
-
-  const arms = [[-8, P.armL, 0, 40, 16, 40, 32], [4, 0, 1, 32, 48, 48, 48]];
-  for (const [sx, swing, isWaver, ou, ov, ou2, ov2] of arms) {
-    const rx = isWaver ? (P.wave ? P.armR * (1 - P.wave) : P.armR) : swing;
-    const rz = isWaver ? waveRz : 0;
+  /* Arms swing from the shoulder. Pitch and roll both come from the pose,
+     so idle sway and triggered gestures drive the same joints.
+     [x, pitch, roll, baseU, baseV, overlayU, overlayV] */
+  const arms = [
+    [-8, P.armL, P.armLz, 40, 16, 40, 32],   // right arm (-x side)
+    [4, P.armR, P.armRz, 32, 48, 48, 48]     // left arm  (+x side)
+  ];
+  for (const [sx, rx, rz, ou, ov, ou2, ov2] of arms) {
     setXform((sx + (sx < 0 ? 4 : 0)) / 16, (24 + y) / 16, 0, rx, 0, rz);
     skinPart(sx, 12 + y, -2, 4, 12, 4, ou, ov, 0);
     skinPart(sx, 12 + y, -2, 4, 12, 4, ou2, ov2, 0.28);
@@ -1343,11 +1389,22 @@ function setBiome(id) {
   showToast('🧭', 'Biome Discovered', BIOMES[id].label);
 }
 
+/* A gesture to match each section, played on arrival. */
+const SECTION_GESTURE = {
+  profile: 'wave',
+  projects: 'present',
+  advancements: 'cheer',
+  inventory: 'inspect',
+  levels: 'cast',
+  contact: 'wave'
+};
+
 function showPanel(name) {
   panels.forEach((pl) => pl.classList.toggle('is-active', pl.id === `panel-${name}`));
   slots.forEach((s) => s.classList.toggle('is-selected', s.dataset.panel === name));
   titleScreen.classList.add('is-hidden');
   setBiome(SECTION_BIOME[name]);
+  playGesture(SECTION_GESTURE[name]);
   const open = document.getElementById(`panel-${name}`);
   if (open) open.focus({ preventScroll: true });
 }

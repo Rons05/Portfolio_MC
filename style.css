@@ -210,20 +210,22 @@ button { font: inherit; color: inherit; cursor: pointer; background: none; borde
 }
 
 /* ---------------- panels ---------------- */
+/* Panels dock to the left so the world and the character stay visible
+   beside them rather than being covered up. */
 .panel-stage {
   position: absolute;
   inset: 0;
-  padding: 70px 1rem 205px;
+  padding: 70px 1rem 205px clamp(1rem, 3vw, 2.5rem);
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   pointer-events: none;
   z-index: 5;
 }
 
 .panel {
   display: none;
-  width: min(560px, 100%);
+  width: min(460px, 48vw);
   max-height: 100%;
   flex-direction: column;
   pointer-events: auto;
@@ -238,7 +240,7 @@ button { font: inherit; color: inherit; cursor: pointer; background: none; borde
 .panel.is-active { display: flex; animation: panelIn 0.26s cubic-bezier(.22,.9,.3,1); }
 
 @keyframes panelIn {
-  from { opacity: 0; transform: translateY(10px); }
+  from { opacity: 0; transform: translateX(-14px); }
   to   { opacity: 1; transform: none; }
 }
 
@@ -632,7 +634,9 @@ button { font: inherit; color: inherit; cursor: pointer; background: none; borde
 
 /* ---------------- responsive ---------------- */
 @media (max-width: 860px) {
+  /* too narrow to dock beside anything — go full width */
   .panel-stage { padding: 58px 12px 200px; align-items: flex-start; }
+  .panel { width: 100%; }
   .title-screen { padding: 58px 1rem 200px; justify-content: flex-start; }
   .slot { width: 40px; height: 40px; font-size: 1.05rem; }
   .world-info { font-size: 0.5rem; line-height: 1.85; }

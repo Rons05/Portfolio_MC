@@ -1434,14 +1434,20 @@ const FACE_MASKS = (function () {
 
 function buildTree(tx, tz, rng, amb, p, big) {
   const h = big ? 3 + Math.floor(rng() * 2) : 2 + Math.floor(rng() * 3);
-  for (let y = 0; y < h; y++) {
+  /* The trunk runs one block up into the canopy, so no seam can show
+     between them however the leaves fall. */
+  for (let y = 0; y < h + 1; y++) {
     box(tx, y, tz, tx + 1, y + 1, tz + 1, y % 2 ? p.trunk : '#3d2a1e', amb, 'tfbslr', TILE.LOG);
   }
   // canopy: an ellipsoid of leaf blocks
   const rx = (big ? 4.6 : 2.5) + rng() * 1.2;
   const ry = (big ? 1.7 : 1.4) + rng() * 0.5;
   const rz = (big ? 4.6 : 2.5) + rng() * 1.2;
-  const cy = h + ry - 0.4;
+  /* Snap the canopy to whole blocks. It used to sit at h + ry - 0.4 with
+     ry fractional, which floated the leaves up to half a block clear of
+     the trunk top and left a visible gap. */
+  const ryI = Math.max(1, Math.round(ry));
+  const cy = h - 1 + ryI;
   const reach = big ? 6 : 4;
 
   /* Two passes. The first records which cells are leaves — it has to be

@@ -8,7 +8,6 @@ const canvas = document.getElementById('scene');
 const gl = canvas.getContext('webgl', { alpha: true, antialias: true });
 
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-let isNight = true;
 
 /* ---------------- palettes ---------------- */
 /* Lighting: a single directional light plus a coloured sky ambient.
@@ -29,14 +28,11 @@ const SUN_DIR = norm([-0.52, 0.33, 0.32]);
    and appear in frame, and a fully backlit scene would silhouette the
    character. The bloom and shafts anchor here; the shading stays keyed
    to SUN_DIR above. */
-const RAY_DIR = norm([-0.25, 0.10, -0.96]);
+const RAY_DIR = norm([-0.30, 0.10, -0.95]);
 
 /* Time of day supplies the light and haze; the biome supplies the block
    colours. Keeping them independent means either can change on its own. */
-const TIME = {
-  day:   { sunColor: [1.28, 0.94, 0.58], ambColor: [0.44, 0.44, 0.62], lampOn: false, amb: 1.0 },
-  night: { sunColor: [0.46, 0.52, 0.80], ambColor: [0.24, 0.24, 0.40], lampOn: true,  amb: 1.0 }
-};
+const DAYLIGHT = { sunColor: [1.28, 0.94, 0.58], ambColor: [0.44, 0.44, 0.62], amb: 1.0 };
 
 const glow = (col, stop) =>
   `radial-gradient(circle at 24% 15%, ${col} 0%, rgba(255,255,255,0) ${stop}),`;
@@ -48,10 +44,9 @@ const BIOMES = {
     water: '#4b8fd4', trunk: '#6b4a34',
     leaf: ['#ffb0d0', '#f79bc0', '#ffc8de', '#e98cb2'],
     flower: ['#ffffff', '#ff8fb8', '#ffd35e'],
-    petalDay: [1.0, 0.93, 0.96], petalNight: [0.87, 0.56, 0.69],
+    petalDay: [1.0, 0.93, 0.96],
     skyDay: glow('rgba(255,244,200,0.72)', '38%') + 'linear-gradient(#4fa8e0 0%, #8ccdee 42%, #cbe9f7 72%, #ffd7e6 100%)',
-    skyNight: glow('rgba(150,170,235,0.30)', '42%') + 'linear-gradient(#0f0b20 0%, #241640 38%, #4d2a4f 68%, #8a4a68 100%)',
-    fogDay: [0.86, 0.88, 0.92], fogNight: [0.42, 0.24, 0.34]
+    fogDay: [0.86, 0.88, 0.92]
   },
   plains: {
     label: 'Plains',
@@ -59,10 +54,9 @@ const BIOMES = {
     water: '#3d7fc4', trunk: '#6b4a34',
     leaf: ['#4a7c2f', '#558b35', '#3f6b28', '#61994a'],
     flower: ['#ffd35e', '#ff8fb8', '#ffffff'],
-    petalDay: [1.0, 0.98, 0.86], petalNight: [0.72, 0.74, 0.62],
+    petalDay: [1.0, 0.98, 0.86],
     skyDay: glow('rgba(255,248,214,0.70)', '38%') + 'linear-gradient(#4a9fd8 0%, #86c6ea 44%, #c3e4f4 74%, #e8f3fb 100%)',
-    skyNight: glow('rgba(150,170,235,0.28)', '42%') + 'linear-gradient(#0b1024 0%, #16224a 40%, #2c3c66 72%, #4a5c80 100%)',
-    fogDay: [0.84, 0.89, 0.94], fogNight: [0.20, 0.26, 0.40]
+    fogDay: [0.84, 0.89, 0.94]
   },
   savanna: {
     label: 'Savanna',
@@ -70,10 +64,9 @@ const BIOMES = {
     water: '#4a8fb8', trunk: '#7a6a4a',
     leaf: ['#9aa84a', '#8a9840', '#a8b455', '#7d8c39'],
     flower: ['#e8c04a', '#d9a441', '#fff0c0'],
-    petalDay: [1.0, 0.94, 0.72], petalNight: [0.72, 0.62, 0.44],
+    petalDay: [1.0, 0.94, 0.72],
     skyDay: glow('rgba(255,226,160,0.85)', '44%') + 'linear-gradient(#6aa8cc 0%, #a8c8d8 38%, #f0d8a8 74%, #ffc98a 100%)',
-    skyNight: glow('rgba(220,190,150,0.26)', '42%') + 'linear-gradient(#140f1a 0%, #2a1d24 40%, #4a3226 74%, #6b4630 100%)',
-    fogDay: [0.92, 0.86, 0.72], fogNight: [0.32, 0.24, 0.20]
+    fogDay: [0.92, 0.86, 0.72]
   },
   storage: {
     label: 'Storage Room',
@@ -82,12 +75,11 @@ const BIOMES = {
     water: '#3a2f22', trunk: '#4f3b26',
     leaf: ['#8a6a3c', '#7a5a34', '#946f42', '#6f5330'],
     flower: ['#ffd98a', '#e8c06a', '#fff0c8'],
-    petalDay: [0.92, 0.80, 0.55], petalNight: [0.88, 0.74, 0.48],
+    petalDay: [0.92, 0.80, 0.55],
     // lit by lanterns, not by the sky — override the time-of-day light
     sunColor: [0.26, 0.20, 0.13], ambColor: [0.40, 0.31, 0.21],
     skyDay: 'linear-gradient(#161009 0%, #100c08 100%)',
-    skyNight: 'linear-gradient(#120d07 0%, #0b0806 100%)',
-    fogDay: [0.10, 0.07, 0.04], fogNight: [0.08, 0.06, 0.04]
+    fogDay: [0.10, 0.07, 0.04]
   },
   end: {
     label: 'The End',
@@ -95,10 +87,9 @@ const BIOMES = {
     water: '#241634', trunk: '#2a2038',
     leaf: ['#4a3a6b', '#3d2f5a', '#56447a', '#332748'],
     flower: ['#b088d8', '#8a66b8', '#d8c8f0'],
-    petalDay: [0.78, 0.62, 0.92], petalNight: [0.68, 0.52, 0.86],
+    petalDay: [0.78, 0.62, 0.92],
     skyDay: glow('rgba(190,160,235,0.26)', '46%') + 'linear-gradient(#080610 0%, #140d22 40%, #1e1433 72%, #2a1d44 100%)',
-    skyNight: glow('rgba(190,160,235,0.22)', '46%') + 'linear-gradient(#050409 0%, #0e0918 40%, #160f26 72%, #201634 100%)',
-    fogDay: [0.14, 0.10, 0.22], fogNight: [0.10, 0.07, 0.17]
+    fogDay: [0.14, 0.10, 0.22]
   },
   beach: {
     label: 'Beach',
@@ -106,10 +97,9 @@ const BIOMES = {
     water: '#3aa8d8', trunk: '#7a5a3a',
     leaf: ['#4a9a4a', '#3f8a40', '#55a855', '#368038'],
     flower: ['#ffffff', '#ff9a6a', '#ffd35e'],
-    petalDay: [1.0, 0.96, 0.88], petalNight: [0.74, 0.78, 0.82],
+    petalDay: [1.0, 0.96, 0.88],
     skyDay: glow('rgba(255,242,200,0.78)', '40%') + 'linear-gradient(#3fb0dd 0%, #86d2ee 42%, #cdeaf6 72%, #ffe6c8 100%)',
-    skyNight: glow('rgba(160,190,240,0.28)', '44%') + 'linear-gradient(#060f1e 0%, #0e2038 40%, #1b3652 72%, #2f5470 100%)',
-    fogDay: [0.84, 0.92, 0.95], fogNight: [0.14, 0.24, 0.36]
+    fogDay: [0.84, 0.92, 0.95]
   }
 };
 
@@ -120,25 +110,24 @@ let CURRENT_PAL = null;
    builder reads, so pal() stays a cheap lookup inside the render loop. */
 function refreshPalette() {
   const b = BIOMES[biomeId] || BIOMES.cherry;
-  const t = isNight ? TIME.night : TIME.day;
   CURRENT_PAL = {
     label: b.label,
     interior: !!b.interior,
     grass: b.grass, grassAlt: b.grassAlt, grassAlt2: b.grassAlt2,
     dirt: b.dirt, water: b.water, trunk: b.trunk,
     leaf: b.leaf, flower: b.flower,
-    petal: isNight ? b.petalNight : b.petalDay,
-    skyCss: isNight ? b.skyNight : b.skyDay,
-    // daytime haze warmed toward the sun, the way a low sun tints distance
-    fog: isNight ? b.fogNight : [
+    petal: b.petalDay,
+    skyCss: b.skyDay,
+    // haze warmed toward the sun, the way a low sun tints distance
+    fog: [
       b.fogDay[0] * 0.55 + 0.99 * 0.45,
       b.fogDay[1] * 0.55 + 0.80 * 0.45,
       b.fogDay[2] * 0.55 + 0.56 * 0.45
     ],
-    sunColor: b.sunColor || t.sunColor,
-    ambColor: b.ambColor || t.ambColor,
-    lampOn: b.interior ? true : t.lampOn,
-    amb: t.amb
+    sunColor: b.sunColor || DAYLIGHT.sunColor,
+    ambColor: b.ambColor || DAYLIGHT.ambColor,
+    lampOn: !!b.interior,
+    amb: DAYLIGHT.amb
   };
   const el = document.getElementById('biomeName');
   if (el) el.textContent = b.label;
@@ -191,6 +180,7 @@ attribute vec3 aColor;
 attribute vec2 aUV;
 uniform mat4 uMVP;
 uniform float uPointSize;
+uniform float uFogMul;
 varying vec3 vColor;
 varying vec2 vUV;
 varying float vFog;
@@ -200,7 +190,7 @@ void main() {
   gl_PointSize = uPointSize;
   vColor = aColor;
   vUV = aUV;
-  vFog = clamp((clip.w - 14.0) / 34.0, 0.0, 1.0);
+  vFog = clamp((clip.w - 14.0) / 34.0, 0.0, 1.0) * uFogMul;
 }`;
 
 const FS = `
@@ -251,6 +241,7 @@ function initGL() {
     uFog: gl.getUniformLocation(program, 'uFog'),
     uTex: gl.getUniformLocation(program, 'uTex'),
     uUseTex: gl.getUniformLocation(program, 'uUseTex'),
+    uFogMul: gl.getUniformLocation(program, 'uFogMul'),
     uAlphaTest: gl.getUniformLocation(program, 'uAlphaTest'),
     uPointSize: gl.getUniformLocation(program, 'uPointSize')
   };
@@ -1125,7 +1116,7 @@ function buildOutdoors(amb, p, rng) {
     const cx = -40 + rng() * 80, cz = -40 + rng() * 80;
     const cy = 16 + rng() * 7;
     const w = 5 + rng() * 9, d = 5 + rng() * 9;
-    box(cx, cy, cz, cx + w, cy + 1, cz + d, isNight ? '#3b2f52' : '#ffffff', amb);
+    box(cx, cy, cz, cx + w, cy + 1, cz + d, '#ffffff', amb);
   }
 
   /* Cherry trees, kept well clear of the clearing so the camera has
@@ -1159,7 +1150,7 @@ function buildHouse(hx, hz, amb, p) {
   const w = 7, d = 6, wallH = 4;
   const plank = '#a5793f', plankDark = '#8c6432', log = '#5f4224';
   const roof = '#7a3f2a', roofDark = '#5e2f1f';
-  const stone = '#8a8a8a', glass = isNight ? '#e8c25a' : '#a8d8ee';
+  const stone = '#8a8a8a', glass = p.lampOn ? '#e8c25a' : '#a8d8ee';
 
   box(hx - 0.3, -0.1, hz - 0.3, hx + w + 0.3, 0.25, hz + d + 0.3, stone, amb, 'tfbslr', TILE.STONE);
   box(hx, 0.25, hz, hx + w, wallH, hz + 0.35, plank, amb, 'tfbslr', TILE.PLANK);
@@ -1366,6 +1357,69 @@ function updatePetals(dt, p) {
    input at all. Only the HUD is interactive. */
 let yaw = 0.3, pitch = 0.22, targetYaw = 0.3, targetPitch = 0.22;
 
+/* ---------------- the sun ----------------
+   A flat square that turns to face the camera, exactly as the game
+   draws its own. Real geometry rather than an overlay, so the trees and
+   terrain occlude it. Six vertices, rebuilt each frame. */
+let sunBuf, sunColBuf, sunUvBuf;
+const sunPos = new Float32Array(18);
+const sunCol = new Float32Array(18);
+const sunUv = new Float32Array(12);
+
+function drawSunDisc(eye, target) {
+  if (!sunBuf) {
+    sunBuf = gl.createBuffer(); sunColBuf = gl.createBuffer(); sunUvBuf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, sunColBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, sunCol.byteLength, gl.DYNAMIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, sunUvBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, sunUv.byteLength, gl.DYNAMIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, sunBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, sunPos.byteLength, gl.DYNAMIC_DRAW);
+  }
+
+  // camera basis, so the square always faces the viewer
+  let fx = target[0] - eye[0], fy = target[1] - eye[1], fz = target[2] - eye[2];
+  const fl = Math.hypot(fx, fy, fz); fx /= fl; fy /= fl; fz /= fl;
+  // right = normalize(cross(forward, worldUp))
+  let rx = fz, ry = 0, rz = -fx;
+  const rl = Math.hypot(rx, ry, rz) || 1; rx /= rl; ry /= rl; rz /= rl;
+  // up = cross(right, forward)
+  const ux = ry * fz - rz * fy, uy = rz * fx - rx * fz, uz = rx * fy - ry * fx;
+
+  const D = 90, S = 7.5;
+  const cx = eye[0] + RAY_DIR[0] * D;
+  const cy = eye[1] + RAY_DIR[1] * D;
+  const cz = eye[2] + RAY_DIR[2] * D;
+
+  const corner = (a, b, i) => {
+    sunPos[i] = cx + rx * S * a + ux * S * b;
+    sunPos[i + 1] = cy + ry * S * a + uy * S * b;
+    sunPos[i + 2] = cz + rz * S * a + uz * S * b;
+  };
+  //  two triangles, wound so the face points back at the camera
+  corner(-1, -1, 0);  corner(1, -1, 3);  corner(1, 1, 6);
+  corner(-1, -1, 9);  corner(1, 1, 12);  corner(-1, 1, 15);
+
+  const c = [1.0, 0.97, 0.80];
+  for (let i = 0; i < 6; i++) {
+    sunCol[i * 3] = c[0]; sunCol[i * 3 + 1] = c[1]; sunCol[i * 3 + 2] = c[2];
+  }
+
+  gl.uniform1f(loc.uUseTex, 0.0);
+  gl.uniform1f(loc.uAlphaTest, 0.0);
+  gl.uniform1f(loc.uFogMul, 0.0);      // the haze must not eat the sun
+  gl.disableVertexAttribArray(loc.aUV);
+  gl.vertexAttrib2f(loc.aUV, 0, 0);
+  gl.bindBuffer(gl.ARRAY_BUFFER, sunBuf);
+  gl.bufferSubData(gl.ARRAY_BUFFER, 0, sunPos);
+  gl.vertexAttribPointer(loc.aPos, 3, gl.FLOAT, false, 0, 0);
+  gl.bindBuffer(gl.ARRAY_BUFFER, sunColBuf);
+  gl.bufferSubData(gl.ARRAY_BUFFER, 0, sunCol);
+  gl.vertexAttribPointer(loc.aColor, 3, gl.FLOAT, false, 0, 0);
+  gl.drawArrays(gl.TRIANGLES, 0, 6);
+  gl.uniform1f(loc.uFogMul, 1.0);
+}
+
 /* ---------------- screen-space sun effects ----------------
    Projects the sun through the live camera and hands its screen position
    to CSS, which draws the bloom and the shafts. Like a shader pack's
@@ -1383,7 +1437,11 @@ function updateSunFx(eye, t) {
   const cw = mvp[3] * wx + mvp[7] * wy + mvp[11] * wz + mvp[15];
   let target = 0, sx = 50, sy = 30;
 
-  if (cw > 0) {
+  // Indoors there is no sky. The bloom is a screen-space overlay and so
+  // would otherwise glow straight through the roof.
+  const indoors = pal().interior;
+
+  if (cw > 0 && !indoors) {
     const cx = mvp[0] * wx + mvp[4] * wy + mvp[8] * wz + mvp[12];
     const cy = mvp[1] * wx + mvp[5] * wy + mvp[9] * wz + mvp[13];
     const ndcX = cx / cw, ndcY = cy / cw;
@@ -1399,9 +1457,8 @@ function updateSunFx(eye, t) {
   const st = gameEl.style;
   st.setProperty('--sun-x', sx.toFixed(2) + '%');
   st.setProperty('--sun-y', sy.toFixed(2) + '%');
-  st.setProperty('--sun-vis', (sunVis * (isNight ? 0.35 : 1)).toFixed(3));
-  st.setProperty('--ray-spin', ((t || 0) * 0.0016).toFixed(2) + 'deg');
-  st.setProperty('--warmth', isNight ? '0.34' : '0.9');
+  st.setProperty('--sun-vis', sunVis.toFixed(3));
+  st.setProperty('--warmth', indoors ? '0' : '0.9');
 }
 
 /* ---------------- render loop ---------------- */
@@ -1424,7 +1481,7 @@ function render(t) {
 
   /* Idle camera sways around the front rather than orbiting fully —
      a full spin leaves visitors staring at the back of his head. */
-  if (!reduceMotion) targetYaw = 0.3 + Math.sin(t / 9000) * 0.42;
+  if (!reduceMotion) targetYaw = 0.3 + Math.sin(t / 9000) * 0.26;
   // frame-rate independent smoothing: same easing at 60Hz and 144Hz
   const k = 1 - Math.pow(0.0001, dt);
   yaw += (targetYaw - yaw) * k;
@@ -1459,8 +1516,13 @@ function render(t) {
   gl.uniformMatrix4fv(loc.uMVP, false, mvp);
   gl.uniform3fv(loc.uFog, p.fog);
 
-  // world — block atlas, fully opaque
+  // the sun square, drawn first so everything else can occlude it
   gl.uniform1f(loc.uPointSize, 1.0);
+  gl.uniform1f(loc.uFogMul, 1.0);
+  if (!p.interior) drawSunDisc(eye, target);
+
+  // world — block atlas, fully opaque
+  gl.enableVertexAttribArray(loc.aUV);
   gl.uniform1f(loc.uUseTex, 1.0);
   gl.uniform1f(loc.uAlphaTest, 0.0);
   gl.bindTexture(gl.TEXTURE_2D, atlasTex);
@@ -1663,19 +1725,6 @@ function tickClock() {
 }
 tickClock();
 if (!reduceMotion) setInterval(tickClock, 1400);
-
-/* ---------------- day / night ---------------- */
-const timeToggle = document.getElementById('timeToggle');
-const timeIcon = document.getElementById('timeIcon');
-
-timeToggle.addEventListener('click', () => {
-  isNight = !isNight;
-  timeIcon.textContent = isNight ? '🌙' : '☀️';
-  timeToggle.setAttribute('aria-label', isNight ? 'Switch to day' : 'Switch to night');
-  refreshPalette();
-  buildWorld();
-  timeToggle.blur();   // don't leave it focused, or Space/Enter re-fires it
-});
 
 /* ---------------- boot ---------------- */
 let resizeTimer;

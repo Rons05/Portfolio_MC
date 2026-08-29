@@ -56,10 +56,9 @@ button { font: inherit; color: inherit; cursor: pointer; background: none; borde
   pointer-events: none;   /* scenery only — the HUD takes all input */
 }
 
-/* Screen-space sun effects, anchored to the sun's projected position.
-   --sun-x/--sun-y are written each frame by the renderer, and --sun-vis
-   fades them out as the sun leaves the frame — the same way a shader
-   pack's screen-space rays behave. */
+/* Soft bloom around the sun, anchored to its projected position.
+   --sun-x/--sun-y are written each frame by the renderer; --sun-vis
+   fades it out as the sun leaves the frame. */
 /* Atmospheric grade: lavender aloft, gold at the horizon — the colour
    signature of a low sun. Sits over the scene so it tints terrain and
    sky alike, the way real aerial perspective does. */
@@ -84,16 +83,12 @@ button { font: inherit; color: inherit; cursor: pointer; background: none; borde
   mix-blend-mode: screen;
 }
 
-.sunglow,
-.godrays {
+.sunglow {
   position: absolute;
   inset: 0;
   pointer-events: none;
   z-index: 2;
   mix-blend-mode: screen;
-}
-
-.sunglow {
   opacity: var(--sun-vis, 0);
   background: radial-gradient(
     circle at var(--sun-x, 50%) var(--sun-y, 30%),
@@ -104,18 +99,6 @@ button { font: inherit; color: inherit; cursor: pointer; background: none; borde
   );
 }
 
-.godrays {
-  opacity: calc(var(--sun-vis, 0) * 0.8);
-  background: repeating-conic-gradient(
-    from var(--ray-spin, 0deg) at var(--sun-x, 50%) var(--sun-y, 30%),
-    rgba(255, 232, 178, 0.16) 0deg 1.4deg,
-    rgba(255, 232, 178, 0) 1.4deg 5.6deg
-  );
-  -webkit-mask-image: radial-gradient(circle at var(--sun-x, 50%) var(--sun-y, 30%),
-    #000 0%, rgba(0, 0, 0, 0.75) 16%, transparent 58%);
-  mask-image: radial-gradient(circle at var(--sun-x, 50%) var(--sun-y, 30%),
-    #000 0%, rgba(0, 0, 0, 0.75) 16%, transparent 58%);
-}
 
 .vignette {
   position: absolute;
@@ -123,10 +106,6 @@ button { font: inherit; color: inherit; cursor: pointer; background: none; borde
   pointer-events: none;
   z-index: 3;
   background: radial-gradient(ellipse at 50% 45%, transparent 35%, rgba(6, 4, 12, 0.55) 100%);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .godrays { display: none; }
 }
 
 /* ---------------- world info ---------------- */
@@ -146,23 +125,6 @@ button { font: inherit; color: inherit; cursor: pointer; background: none; borde
 .world-info .dim { color: #cfc8dc; }
 .world-info .hl { color: #ffc2dc; }
 
-.time-toggle {
-  position: absolute;
-  top: 12px;
-  right: 14px;
-  z-index: 6;
-  width: 42px;
-  height: 42px;
-  font-size: 1.1rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--slot-bg);
-  border: 3px solid var(--slot-edge);
-  box-shadow: inset 2px 2px 0 rgba(0, 0, 0, 0.5), inset -2px -2px 0 rgba(255, 255, 255, 0.14);
-  transition: transform 0.16s cubic-bezier(.22,.9,.3,1), border-color 0.16s ease;
-}
-.time-toggle:hover { transform: translateY(-2px); border-color: var(--edge-hi); }
 
 /* ---------------- title screen ---------------- */
 .title-screen {

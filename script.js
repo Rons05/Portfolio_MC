@@ -256,9 +256,10 @@ function initGL() {
   gl.uniform1i(loc.uTex, 0);
   atlasTex = uploadTexture(makeAtlas());
   skinTex = uploadTexture(makeSkinTexture());
+  beeTex = uploadTexture(makeBeeTexture());
 }
 
-let atlasTex, skinTex;
+let atlasTex, skinTex, beeTex;
 
 /* NEAREST filtering throughout — the whole look depends on texels staying
    square rather than being smoothed. */
@@ -1539,6 +1540,78 @@ function updateCharacterMesh(t, amb, dt) {
 }
 
 
+/* ---------------- bee texture ----------------
+   Painted pixel by pixel and UV-unwrapped onto the model, the same way
+   the character's skin works — the body was previously five stacked
+   boxes faking the stripes, which is not how the mob is built. */
+const BEE_TEX = 64;
+
+function makeBeeTexture() {
+  const c = document.createElement('canvas');
+  c.width = BEE_TEX; c.height = BEE_TEX;
+  const g = c.getContext('2d');
+  const C = {
+    G: '#e0a92c',   // gold
+    g: '#cf9a22',   // gold, shaded
+    S: '#4a2c12',   // stripe
+    B: '#5c3d22',   // brown tail
+    D: '#20203a',   // eye socket
+    C: '#63c6dc',   // eye
+    M: '#3d2612',   // muzzle
+    W: '#eceadf',   // wing
+    w: '#d4d2c6',   // wing, shaded
+    K: '#241a10'    // black
+  };
+  const paint = (ox, oy, rows) => {
+    rows.forEach((row, y) => {
+      for (let x = 0; x < row.length; x++) {
+        const col = C[row[x]];
+        if (!col) continue;
+        g.fillStyle = col;
+        g.fillRect(ox + x, oy + y, 1, 1);
+      }
+    });
+  };
+
+  /* Body, an 8-cube. Standard box unwrap at (0,0):
+     top(8,0) bottom(16,0) right(0,8) front(8,8) left(16,8) back(24,8) */
+  const stripedTop = [
+    'BBBBBBBB', 'SSSSSSSS', 'GGGGGGGG', 'SSSSSSSS',
+    'GGGGGGGG', 'SSSSSSSS', 'GGGGGGGG', 'GGGGGGGG'
+  ];
+  paint(8, 0, stripedTop);                                   // top
+  paint(16, 0, stripedTop.map(r => r.replace(/G/g, 'g')));    // bottom, shaded
+
+  const flank = Array(8).fill('BSGSGSGG');
+  paint(0, 8, flank);                                        // right
+  paint(16, 8, flank);                                       // left
+  paint(24, 8, Array(8).fill('BBBBBBBB'));                   // back
+
+  paint(8, 8, [                                              // face
+    'GGGGGGGG',
+    'GGGGGGGG',
+    'GDDGGDDG',
+    'GCCGGCCG',
+    'GCCMMCCG',
+    'GDDMMDDG',
+    'GGGMMGGG',
+    'GGGMMGGG'
+  ]);
+
+  // wing: 6 x 1 x 4, unwrapped at (0,20)
+  paint(4, 20, Array(4).fill('WWWWWW'));                     // top
+  paint(10, 20, Array(4).fill('wwwwww'));                    // bottom
+  paint(0, 24, ['wwww']); paint(4, 24, ['WWWWWW']);
+  paint(10, 24, ['wwww']); paint(14, 24, ['WWWWWW']);
+
+  // antenna 1x2x1 at (0,28), leg 1x2x2 at (8,28), stinger 2x2x3 at (16,28)
+  for (let i = 0; i < 6; i++) paint(i, 28, ['K', 'K', 'K', 'K']);
+  for (let i = 0; i < 8; i++) paint(8 + i, 28, ['K', 'K', 'K', 'K']);
+  for (let i = 0; i < 12; i++) paint(16 + i, 28, ['K', 'K', 'K', 'K', 'K']);
+
+  return c;
+}
+
 /* ---------------- bees ----------------
    A small mob: striped body, black eyes, antennae, stinger and a pair of
    wings that beat. They loop lazily over the flowers. Flat-shaded in
@@ -1566,63 +1639,62 @@ function initBees() {
   }
 }
 
-function buildBee(bx, by, bz, heading, flap, amb) {
+/* One textured part of the bee, unwrapped the way a box texture is laid
+   out and placed relative to the bee's world position. */
+function beePart(ox, oy, oz, lx, ly, lz, w, h, d, ou, ov) {
   const S = 1 / 16;
-  /* Colours run deeper than the reference swatches look on their own,
-     because every face is multiplied by the scene light. */
-  const GOLD = hexRGB('#d4a029'), GOLD_HI = hexRGB('#e6b843');
-  const STRIPE = hexRGB('#452a12'), BACK = hexRGB('#4a3320');
-  const EYE_DK = hexRGB('#1b1b2e'), EYE = hexRGB('#63c6dc');
-  const MOUTH = hexRGB('#3d2612'), BLK = hexRGB('#221a10');
-  const WING = hexRGB('#ece9dd');
+  const x0 = ox + lx * S, y0 = oy + ly * S, z0 = oz + lz * S;
+  const x1 = x0 + w * S, y1 = y0 + h * S, z1 = z0 + d * S;
 
-  const part = (x0, y0, z0, x1, y1, z1, rgb) => {
-    const c = [rgb[0] * amb, rgb[1] * amb, rgb[2] * amb];
-    box(bx + x0 * S, by + y0 * S, bz + z0 * S,
-        bx + x1 * S, by + y1 * S, bz + z1 * S, c, 1.0);
+  const uv = (u, v, uw, uh) => [
+    (u + 0.02) / BEE_TEX, (v + 0.02) / BEE_TEX,
+    (u + uw - 0.02) / BEE_TEX, (v + uh - 0.02) / BEE_TEX
+  ];
+  const uTop = uv(ou + d, ov, w, d);
+  const uBot = uv(ou + d + w, ov, w, d);
+  const uRight = uv(ou, ov + d, d, h);
+  const uFront = uv(ou + d, ov + d, w, h);
+  const uLeft = uv(ou + d + w, ov + d, d, h);
+  const uBack = uv(ou + d + w + d, ov + d, w, h);
+
+  const q = (ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz, L, t) => {
+    const r = L[0], g2 = L[1], b2 = L[2];
+    vertex(ax, ay, az, r, g2, b2, t[0], t[3]);
+    vertex(bx, by, bz, r, g2, b2, t[2], t[3]);
+    vertex(cx, cy, cz, r, g2, b2, t[2], t[1]);
+    vertex(ax, ay, az, r, g2, b2, t[0], t[3]);
+    vertex(cx, cy, cz, r, g2, b2, t[2], t[1]);
+    vertex(dx, dy, dz, r, g2, b2, t[0], t[1]);
   };
 
+  q(x0, y1, z1, x1, y1, z1, x1, y1, z0, x0, y1, z0, LIGHT.t, uTop);
+  q(x0, y0, z1, x1, y0, z1, x1, y1, z1, x0, y1, z1, LIGHT.f, uFront);
+  q(x1, y0, z0, x0, y0, z0, x0, y1, z0, x1, y1, z0, LIGHT.b, uBack);
+  q(x0, y0, z0, x0, y0, z1, x0, y1, z1, x0, y1, z0, LIGHT.l, uRight);
+  q(x1, y0, z1, x1, y0, z0, x1, y1, z0, x1, y1, z1, LIGHT.r, uLeft);
+  q(x0, y0, z0, x1, y0, z0, x1, y0, z1, x0, y0, z1, LIGHT.s, uBot);
+}
+
+function buildBee(bx, by, bz, heading, flap) {
   setXform(bx, by, bz, 0, heading, 0);
-
-  /* Near-cubic body, banded front to back. Three dark stripes girdle it,
-     the rearmost band is the brown tail, and the front band stays gold
-     because the face is gold — the dark brown on the model is its back,
-     not its face. */
-  const bands = [
-    [-4, -2.4, BACK],
-    [-2.4, -1.2, GOLD],
-    [-1.2, 0, STRIPE],
-    [0, 1.2, GOLD],
-    [1.2, 2.4, STRIPE],
-    [2.4, 4, GOLD]
-  ];
-  for (const [z0, z1, col] of bands) part(-4, -4, z0, 4, 4, z1, col);
-  part(-4, 4, -4, 4, 4.3, 4, GOLD_HI);                 // fuzz along the top
-
-  // face: cyan eyes in dark sockets, and the dark muzzle below them
-  part(-3.4, 0.2, 4, -1.1, 2.6, 4.25, EYE_DK);
-  part(1.1, 0.2, 4, 3.4, 2.6, 4.25, EYE_DK);
-  part(-3.0, 0.6, 4.25, -1.5, 2.2, 4.4, EYE);
-  part(1.5, 0.6, 4.25, 3.0, 2.2, 4.4, EYE);
-  part(-1.3, -4, 4, 1.3, 0.4, 4.2, MOUTH);
-
-  part(-2.4, 4.3, 2.6, -1.6, 6.6, 3.4, BLK);           // antennae
-  part(1.6, 4.3, 2.6, 2.4, 6.6, 3.4, BLK);
-  part(-0.9, -0.9, -4, 0.9, 0.9, -6, BLK);             // stinger
-  for (const lz of [-2.2, 0.4, 2.4]) {                 // three pairs of legs
-    part(-3.4, -5.2, lz, -2.4, -4, lz + 1.1, BLK);
-    part(2.4, -5.2, lz, 3.4, -4, lz + 1.1, BLK);
+  beePart(bx, by, bz, -4, -4, -4, 8, 8, 8, 0, 0);        // body
+  beePart(bx, by, bz, -2.2, 4, 2.6, 1, 2, 1, 0, 28);     // antennae
+  beePart(bx, by, bz, 1.2, 4, 2.6, 1, 2, 1, 0, 28);
+  beePart(bx, by, bz, -1, -1, -6, 2, 2, 3, 16, 28);      // stinger
+  for (const lz of [-2.4, 0, 2.4]) {                     // three pairs of legs
+    beePart(bx, by, bz, -3.4, -5.6, lz, 1, 2, 2, 8, 28);
+    beePart(bx, by, bz, 2.4, -5.6, lz, 1, 2, 2, 8, 28);
   }
   clearXform();
 
-  /* Wings: pale cream plates on the back, rolled in mirrored pairs. Roll
-     is applied before yaw, so the pair stays symmetrical whichever way
-     the bee happens to be facing. */
+  /* Wings roll in mirrored pairs. Roll is applied before yaw in the
+     vertex transform, so the pair stays symmetrical whichever way the
+     bee happens to be facing. */
   setXform(bx, by, bz, 0, heading, flap);
-  part(-5.6, 4.3, -2.4, -0.7, 4.6, 1.4, WING);
+  beePart(bx, by, bz, -6.2, 4, -2, 6, 1, 4, 0, 20);
   clearXform();
   setXform(bx, by, bz, 0, heading, -flap);
-  part(0.7, 4.3, -2.4, 5.6, 4.6, 1.4, WING);
+  beePart(bx, by, bz, 0.2, 4, -2, 6, 1, 4, 0, 20);
   clearXform();
 }
 
@@ -1645,13 +1717,13 @@ function updateBeeMesh(t, amb) {
   beeSink.n = 0;
   sink = beeSink;
 
-  const flap = reduceMotion ? 0.25 : Math.sin(t * 0.045) * 0.85;
+  const flap = reduceMotion ? 0.18 : 0.16 + Math.sin(t * 0.045) * 0.34;
   for (const b of bees) {
     const a = b.phase + t * 0.001 * b.speed;
     const x = b.cx + Math.cos(a) * b.r;
     const z = b.cz + Math.sin(a) * b.r;
     const y = b.hy + (reduceMotion ? 0 : Math.sin(t * 0.003 + b.phase) * b.bobAmp);
-    buildBee(x, y, z, -a, flap, amb);
+    buildBee(x, y, z, -a, flap);
   }
 
   sink = null;
@@ -1908,8 +1980,9 @@ function render(t) {
   // bees — flat colour, outdoors only
   if (!p.interior) {
     updateBeeMesh(t, p.amb);
-    gl.uniform1f(loc.uUseTex, 0.0);
+    gl.uniform1f(loc.uUseTex, 1.0);
     gl.uniform1f(loc.uAlphaTest, 0.0);
+    gl.bindTexture(gl.TEXTURE_2D, beeTex);
     gl.bindBuffer(gl.ARRAY_BUFFER, beePosBuf);
     gl.vertexAttribPointer(loc.aPos, 3, gl.FLOAT, false, 0, 0);
     gl.bindBuffer(gl.ARRAY_BUFFER, beeColBuf);

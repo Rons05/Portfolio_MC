@@ -1552,14 +1552,15 @@ function makeBeeTexture() {
   const g = c.getContext('2d');
   const C = {
     G: '#e0a92c',   // gold
-    g: '#cf9a22',   // gold, shaded
+    g: '#c2911f',   // gold, shaded underside
     S: '#4a2c12',   // stripe
     B: '#5c3d22',   // brown tail
+    b: '#4a3019',   // brown tail, shaded
     D: '#20203a',   // eye socket
-    C: '#63c6dc',   // eye
+    E: '#63c6dc',   // eye
     M: '#3d2612',   // muzzle
     W: '#eceadf',   // wing
-    w: '#d4d2c6',   // wing, shaded
+    w: '#d2d0c4',   // wing, shaded
     K: '#241a10'    // black
   };
   const paint = (ox, oy, rows) => {
@@ -1573,41 +1574,49 @@ function makeBeeTexture() {
     });
   };
 
-  /* Body, an 8-cube. Standard box unwrap at (0,0):
-     top(8,0) bottom(16,0) right(0,8) front(8,8) left(16,8) back(24,8) */
-  const stripedTop = [
-    'BBBBBBBB', 'SSSSSSSS', 'GGGGGGGG', 'SSSSSSSS',
-    'GGGGGGGG', 'SSSSSSSS', 'GGGGGGGG', 'GGGGGGGG'
-  ];
-  paint(8, 0, stripedTop);                                   // top
-  paint(16, 0, stripedTop.map(r => r.replace(/G/g, 'g')));    // bottom, shaded
+  /* Body: 8 wide, 8 tall, 12 long — the side panels on the reference are
+     half again as wide as the face, so it is elongated front to back
+     rather than the cube it was. Unwrapped at (0,0):
+       top(12,0) bottom(20,0) right(0,12) front(12,12) left(20,12) back(32,12) */
 
-  const flank = Array(8).fill('BSGSGSGG');
-  paint(0, 8, flank);                                        // right
-  paint(16, 8, flank);                                       // left
-  paint(24, 8, Array(8).fill('BBBBBBBB'));                   // back
+  // front to back: gold, three stripes, then the brown tail
+  const LENGTH = 'GGSGGSGGSBBB';
 
-  paint(8, 8, [                                              // face
+  // top and bottom run along the body, so each row is one slice of length
+  const alongTop = [], alongBottom = [];
+  for (const ch of LENGTH) {
+    alongTop.push(ch.repeat(8));
+    alongBottom.push((ch === 'G' ? 'g' : ch === 'B' ? 'b' : ch).repeat(8));
+  }
+  paint(12, 0, alongTop);
+  paint(20, 0, alongBottom);
+
+  // flanks show the same banding as vertical stripes
+  paint(0, 12, Array(8).fill(LENGTH));
+  paint(20, 12, Array(8).fill(LENGTH));
+  paint(32, 12, Array(8).fill('BBBBBBBB'));            // back
+
+  paint(12, 12, [                                      // face
     'GGGGGGGG',
     'GGGGGGGG',
     'GDDGGDDG',
-    'GCCGGCCG',
-    'GCCMMCCG',
+    'GDEGGEDG',
+    'GEEMMEEG',
     'GDDMMDDG',
     'GGGMMGGG',
     'GGGMMGGG'
   ]);
 
-  // wing: 6 x 1 x 4, unwrapped at (0,20)
-  paint(4, 20, Array(4).fill('WWWWWW'));                     // top
-  paint(10, 20, Array(4).fill('wwwwww'));                    // bottom
-  paint(0, 24, ['wwww']); paint(4, 24, ['WWWWWW']);
-  paint(10, 24, ['wwww']); paint(14, 24, ['WWWWWW']);
+  // wing: 7 x 1 x 4, unwrapped at (0,24)
+  paint(4, 24, Array(4).fill('WWWWWWW'));
+  paint(11, 24, Array(4).fill('wwwwwww'));
+  paint(0, 28, ['wwww']); paint(4, 28, ['WWWWWWW']);
+  paint(11, 28, ['wwww']); paint(15, 28, ['WWWWWWW']);
 
-  // antenna 1x2x1 at (0,28), leg 1x2x2 at (8,28), stinger 2x2x3 at (16,28)
-  for (let i = 0; i < 6; i++) paint(i, 28, ['K', 'K', 'K', 'K']);
-  for (let i = 0; i < 8; i++) paint(8 + i, 28, ['K', 'K', 'K', 'K']);
-  for (let i = 0; i < 12; i++) paint(16 + i, 28, ['K', 'K', 'K', 'K', 'K']);
+  // antenna 1x2x1 at (0,32), leg 1x2x2 at (8,32), stinger 2x2x3 at (16,32)
+  for (let i = 0; i < 6; i++) paint(i, 32, ['K', 'K', 'K', 'K']);
+  for (let i = 0; i < 8; i++) paint(8 + i, 32, ['K', 'K', 'K', 'K']);
+  for (let i = 0; i < 12; i++) paint(16 + i, 32, ['K', 'K', 'K', 'K', 'K']);
 
   return c;
 }
@@ -1677,13 +1686,13 @@ function beePart(ox, oy, oz, lx, ly, lz, w, h, d, ou, ov) {
 
 function buildBee(bx, by, bz, heading, flap) {
   setXform(bx, by, bz, 0, heading, 0);
-  beePart(bx, by, bz, -4, -4, -4, 8, 8, 8, 0, 0);        // body
-  beePart(bx, by, bz, -2.2, 4, 2.6, 1, 2, 1, 0, 28);     // antennae
-  beePart(bx, by, bz, 1.2, 4, 2.6, 1, 2, 1, 0, 28);
-  beePart(bx, by, bz, -1, -1, -6, 2, 2, 3, 16, 28);      // stinger
-  for (const lz of [-2.4, 0, 2.4]) {                     // three pairs of legs
-    beePart(bx, by, bz, -3.4, -5.6, lz, 1, 2, 2, 8, 28);
-    beePart(bx, by, bz, 2.4, -5.6, lz, 1, 2, 2, 8, 28);
+  beePart(bx, by, bz, -4, -4, -6, 8, 8, 12, 0, 0);       // body
+  beePart(bx, by, bz, -2.2, 4, 4.4, 1, 2, 1, 0, 32);     // antennae
+  beePart(bx, by, bz, 1.2, 4, 4.4, 1, 2, 1, 0, 32);
+  beePart(bx, by, bz, -1, -1, -8, 2, 2, 3, 16, 32);      // stinger
+  for (const lz of [-3.4, -0.6, 2.2]) {                  // three pairs of legs
+    beePart(bx, by, bz, -3.4, -5.6, lz, 1, 2, 2, 8, 32);
+    beePart(bx, by, bz, 2.4, -5.6, lz, 1, 2, 2, 8, 32);
   }
   clearXform();
 
@@ -1691,10 +1700,10 @@ function buildBee(bx, by, bz, heading, flap) {
      vertex transform, so the pair stays symmetrical whichever way the
      bee happens to be facing. */
   setXform(bx, by, bz, 0, heading, flap);
-  beePart(bx, by, bz, -6.2, 4, -2, 6, 1, 4, 0, 20);
+  beePart(bx, by, bz, -7.2, 4, -2.5, 7, 1, 4, 0, 24);
   clearXform();
   setXform(bx, by, bz, 0, heading, -flap);
-  beePart(bx, by, bz, 0.2, 4, -2, 6, 1, 4, 0, 20);
+  beePart(bx, by, bz, 0.2, 4, -2.5, 7, 1, 4, 0, 24);
   clearXform();
 }
 

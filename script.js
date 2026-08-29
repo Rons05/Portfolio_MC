@@ -1568,12 +1568,13 @@ function initBees() {
 
 function buildBee(bx, by, bz, heading, flap, amb) {
   const S = 1 / 16;
-  /* Deeper than the reference swatches look on their own: every face is
-     multiplied by the scene light, which washed the first attempt out to
-     pale tan. */
-  const YEL = hexRGB('#cf9a22'), YEL_HI = hexRGB('#e2b344');
-  const STRIPE = hexRGB('#33200d'), FACE = hexRGB('#241608');
-  const EYE = hexRGB('#7fd0e4'), BLK = hexRGB('#140f0a'), WING = hexRGB('#dfe6ec');
+  /* Colours run deeper than the reference swatches look on their own,
+     because every face is multiplied by the scene light. */
+  const GOLD = hexRGB('#d4a029'), GOLD_HI = hexRGB('#e6b843');
+  const STRIPE = hexRGB('#452a12'), BACK = hexRGB('#4a3320');
+  const EYE_DK = hexRGB('#1b1b2e'), EYE = hexRGB('#63c6dc');
+  const MOUTH = hexRGB('#3d2612'), BLK = hexRGB('#221a10');
+  const WING = hexRGB('#ece9dd');
 
   const part = (x0, y0, z0, x1, y1, z1, rgb) => {
     const c = [rgb[0] * amb, rgb[1] * amb, rgb[2] * amb];
@@ -1583,38 +1584,45 @@ function buildBee(bx, by, bz, heading, flap, amb) {
 
   setXform(bx, by, bz, 0, heading, 0);
 
-  /* Chunky, nearly cubic body: 8 wide, 7 tall, 9 long, banded amber and
-     dark brown so the stripes girdle it the way they do on the mob. */
+  /* Near-cubic body, banded front to back. Three dark stripes girdle it,
+     the rearmost band is the brown tail, and the front band stays gold
+     because the face is gold — the dark brown on the model is its back,
+     not its face. */
   const bands = [
-    [-4.5, -2.6, YEL], [-2.6, -1.2, STRIPE], [-1.2, 0.7, YEL],
-    [0.7, 2.1, STRIPE], [2.1, 4.5, YEL]
+    [-4, -2.4, BACK],
+    [-2.4, -1.2, GOLD],
+    [-1.2, 0, STRIPE],
+    [0, 1.2, GOLD],
+    [1.2, 2.4, STRIPE],
+    [2.4, 4, GOLD]
   ];
-  for (const [z0, z1, col] of bands) part(-4, -3.5, z0, 4, 3.5, z1, col);
-  part(-4, 3.5, -4.5, 4, 3.9, 4.5, YEL_HI);            // fuzz along the top
+  for (const [z0, z1, col] of bands) part(-4, -4, z0, 4, 4, z1, col);
+  part(-4, 4, -4, 4, 4.3, 4, GOLD_HI);                 // fuzz along the top
 
-  // broad dark face with big pale-blue eyes
-  part(-4, -3.5, 4.5, 4, 3.5, 5.1, FACE);
-  part(-3.5, -0.4, 5.05, -1.3, 2.4, 5.35, EYE);
-  part(1.3, -0.4, 5.05, 3.5, 2.4, 5.35, EYE);
-  part(-1.4, -2.8, 5.05, 1.4, -1.4, 5.3, BLK);         // mandible
+  // face: cyan eyes in dark sockets, and the dark muzzle below them
+  part(-3.4, 0.2, 4, -1.1, 2.6, 4.25, EYE_DK);
+  part(1.1, 0.2, 4, 3.4, 2.6, 4.25, EYE_DK);
+  part(-3.0, 0.6, 4.25, -1.5, 2.2, 4.4, EYE);
+  part(1.5, 0.6, 4.25, 3.0, 2.2, 4.4, EYE);
+  part(-1.3, -4, 4, 1.3, 0.4, 4.2, MOUTH);
 
-  part(-2.4, 3.9, 3.4, -1.6, 6.2, 4.2, BLK);           // antennae
-  part(1.6, 3.9, 3.4, 2.4, 6.2, 4.2, BLK);
-  part(-0.9, -0.8, -4.5, 0.9, 0.8, -6.4, BLK);         // stinger
-  for (const lz of [-2.4, 0.6]) {                      // legs
-    part(-3.6, -4.8, lz, -2.5, -3.4, lz + 1.3, BLK);
-    part(2.5, -4.8, lz, 3.6, -3.4, lz + 1.3, BLK);
+  part(-2.4, 4.3, 2.6, -1.6, 6.6, 3.4, BLK);           // antennae
+  part(1.6, 4.3, 2.6, 2.4, 6.6, 3.4, BLK);
+  part(-0.9, -0.9, -4, 0.9, 0.9, -6, BLK);             // stinger
+  for (const lz of [-2.2, 0.4, 2.4]) {                 // three pairs of legs
+    part(-3.4, -5.2, lz, -2.4, -4, lz + 1.1, BLK);
+    part(2.4, -5.2, lz, 3.4, -4, lz + 1.1, BLK);
   }
   clearXform();
 
-  /* Wings: short, thin plates sitting on the back rather than the long
-     planks they were, and rolled in mirrored pairs. Roll is applied
-     before yaw, so the pair stays symmetrical whichever way it faces. */
+  /* Wings: pale cream plates on the back, rolled in mirrored pairs. Roll
+     is applied before yaw, so the pair stays symmetrical whichever way
+     the bee happens to be facing. */
   setXform(bx, by, bz, 0, heading, flap);
-  part(-5.4, 4.0, -2.6, -0.8, 4.3, 1.2, WING);
+  part(-5.6, 4.3, -2.4, -0.7, 4.6, 1.4, WING);
   clearXform();
   setXform(bx, by, bz, 0, heading, -flap);
-  part(0.8, 4.0, -2.6, 5.4, 4.3, 1.2, WING);
+  part(0.7, 4.3, -2.4, 5.6, 4.6, 1.4, WING);
   clearXform();
 }
 

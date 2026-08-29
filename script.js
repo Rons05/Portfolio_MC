@@ -1538,6 +1538,114 @@ function updateCharacterMesh(t, amb, dt) {
   gl.bufferSubData(gl.ARRAY_BUFFER, 0, charSink.uv);
 }
 
+
+/* ---------------- bees ----------------
+   A small mob: striped body, black eyes, antennae, stinger and a pair of
+   wings that beat. They loop lazily over the flowers. Flat-shaded in
+   their own draw call, so no texture is sampled and the UVs go unused. */
+const BEE_COUNT = 5;
+let beePosBuf, beeColBuf, beeUvBuf, beeCount = 0;
+const beeSink = { pos: null, col: null, uv: null, n: 0, cap: 0 };
+let bees = [];
+
+function initBees() {
+  const rng = mulberry32(31337);
+  bees = [];
+  for (let i = 0; i < BEE_COUNT; i++) {
+    /* Kept out beyond the clearing and on the far side of it. The camera
+       sits around z +7, and a bee that drifts near it fills the frame. */
+    bees.push({
+      cx: -7 + rng() * 16,
+      cz: -15 + rng() * 12,
+      r: 1.6 + rng() * 2.6,
+      speed: 0.22 + rng() * 0.26,
+      phase: rng() * Math.PI * 2,
+      hy: 0.9 + rng() * 1.6,
+      bobAmp: 0.12 + rng() * 0.22
+    });
+  }
+}
+
+function buildBee(bx, by, bz, heading, flap, amb) {
+  const S = 1 / 16;
+  const L = LIGHT;
+  const YEL = hexRGB('#f2c23c'), DRK = hexRGB('#3a2c18');
+  const EYE = hexRGB('#141414'), WING = hexRGB('#dbe7f2');
+
+  // local pixel coords, forward is +z; the pivot is the bee itself
+  const part = (x0, y0, z0, x1, y1, z1, rgb) => {
+    const c = [rgb[0] * amb, rgb[1] * amb, rgb[2] * amb];
+    box(bx + x0 * S, by + y0 * S, bz + z0 * S,
+        bx + x1 * S, by + y1 * S, bz + z1 * S, c, 1.0);
+  };
+
+  setXform(bx, by, bz, 0, heading, 0);
+  // striped body
+  for (let i = 0; i < 5; i++) {
+    part(-4, -3, -5 + i * 2, 4, 4, -3 + i * 2, i % 2 ? DRK : YEL);
+  }
+  part(-3.2, 0.2, 4.9, -1.4, 2.6, 5.3, EYE);       // eyes
+  part(1.4, 0.2, 4.9, 3.2, 2.6, 5.3, EYE);
+  part(-0.8, -0.4, -5, 0.8, 0.9, -6.6, DRK);       // stinger
+  part(-2.1, 3.9, 3.6, -1.4, 6.1, 4.3, DRK);       // antennae
+  part(1.4, 3.9, 3.6, 2.1, 6.1, 4.3, DRK);
+  for (const lz of [-2.5, 0.5]) {                  // legs
+    part(-3.6, -4.2, lz, -2.6, -3, lz + 1.4, DRK);
+    part(2.6, -4.2, lz, 3.6, -3, lz + 1.4, DRK);
+  }
+  clearXform();
+
+  /* Wings beat with mirrored roll about the bee's own centre. Roll is
+     applied before yaw, so the pair stays symmetrical whichever way the
+     bee is facing. */
+  setXform(bx, by, bz, 0, heading, flap);
+  part(-6.4, 4.1, -2.2, -1.2, 4.7, 2.2, WING);
+  clearXform();
+  setXform(bx, by, bz, 0, heading, -flap);
+  part(1.2, 4.1, -2.2, 6.4, 4.7, 2.2, WING);
+  clearXform();
+}
+
+function updateBeeMesh(t, amb) {
+  if (!beeSink.cap) {
+    beeSink.cap = 4096;
+    beeSink.pos = new Float32Array(beeSink.cap * 3);
+    beeSink.col = new Float32Array(beeSink.cap * 3);
+    beeSink.uv = new Float32Array(beeSink.cap * 2);
+    beePosBuf = gl.createBuffer(); beeColBuf = gl.createBuffer(); beeUvBuf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, beePosBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, beeSink.pos.byteLength, gl.DYNAMIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, beeColBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, beeSink.col.byteLength, gl.DYNAMIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, beeUvBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, beeSink.uv.byteLength, gl.DYNAMIC_DRAW);
+  }
+
+  const sp = positions, sc = colors, su = uvs;
+  beeSink.n = 0;
+  sink = beeSink;
+
+  const flap = reduceMotion ? 0.25 : Math.sin(t * 0.045) * 0.85;
+  for (const b of bees) {
+    const a = b.phase + t * 0.001 * b.speed;
+    const x = b.cx + Math.cos(a) * b.r;
+    const z = b.cz + Math.sin(a) * b.r;
+    const y = b.hy + (reduceMotion ? 0 : Math.sin(t * 0.003 + b.phase) * b.bobAmp);
+    buildBee(x, y, z, -a, flap, amb);
+  }
+
+  sink = null;
+  positions = sp; colors = sc; uvs = su;
+  beeCount = Math.min(beeSink.n, beeSink.cap);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, beePosBuf);
+  gl.bufferSubData(gl.ARRAY_BUFFER, 0, beeSink.pos);
+  gl.bindBuffer(gl.ARRAY_BUFFER, beeColBuf);
+  gl.bufferSubData(gl.ARRAY_BUFFER, 0, beeSink.col);
+  gl.bindBuffer(gl.ARRAY_BUFFER, beeUvBuf);
+  gl.bufferSubData(gl.ARRAY_BUFFER, 0, beeSink.uv);
+}
+
 /* ---------------- petals ---------------- */
 const PETALS = 140;
 let petalPos, petalCol, petalPosBuf, petalColBuf, petals = [];
@@ -1777,6 +1885,20 @@ function render(t) {
   gl.vertexAttribPointer(loc.aUV, 2, gl.FLOAT, false, 0, 0);
   gl.drawArrays(gl.TRIANGLES, 0, charCount);
 
+  // bees — flat colour, outdoors only
+  if (!p.interior) {
+    updateBeeMesh(t, p.amb);
+    gl.uniform1f(loc.uUseTex, 0.0);
+    gl.uniform1f(loc.uAlphaTest, 0.0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, beePosBuf);
+    gl.vertexAttribPointer(loc.aPos, 3, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, beeColBuf);
+    gl.vertexAttribPointer(loc.aColor, 3, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, beeUvBuf);
+    gl.vertexAttribPointer(loc.aUV, 2, gl.FLOAT, false, 0, 0);
+    gl.drawArrays(gl.TRIANGLES, 0, beeCount);
+  }
+
   // petals — flat colour, no texture lookup
   updatePetals(dt, p);
   gl.uniform1f(loc.uUseTex, 0.0);
@@ -1977,5 +2099,6 @@ if (!gl) {
   refreshPalette();
   buildWorld();
   buildPetals();
+  initBees();
   requestAnimationFrame(render);
 }

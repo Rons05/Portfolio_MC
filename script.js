@@ -15,17 +15,27 @@ let isNight = true;
    sunDir points from the world toward the light. The ground-shadow
    offset below is derived from the same vector so shading and shadows
    agree instead of contradicting each other. */
-const SUN_DIR = (function () {
-  const v = [-0.42, 0.78, 0.47];
+const norm = (v) => {
   const l = Math.hypot(v[0], v[1], v[2]);
   return [v[0] / l, v[1] / l, v[2] / l];
-})();
+};
+
+/* The key light stays over the viewer's shoulder so the faces you can
+   see are lit. */
+const SUN_DIR = norm([-0.52, 0.33, 0.32]);
+
+/* The sun disc you actually see sits low on the horizon ahead instead —
+   a deliberate cheat. One light cannot both rim the camera-facing sides
+   and appear in frame, and a fully backlit scene would silhouette the
+   character. The bloom and shafts anchor here; the shading stays keyed
+   to SUN_DIR above. */
+const RAY_DIR = norm([-0.25, 0.10, -0.96]);
 
 /* Time of day supplies the light and haze; the biome supplies the block
    colours. Keeping them independent means either can change on its own. */
 const TIME = {
-  day:   { sunColor: [1.02, 0.94, 0.78], ambColor: [0.46, 0.53, 0.64], lampOn: false, amb: 1.0 },
-  night: { sunColor: [0.44, 0.50, 0.76], ambColor: [0.26, 0.25, 0.40], lampOn: true,  amb: 1.0 }
+  day:   { sunColor: [1.28, 0.94, 0.58], ambColor: [0.44, 0.44, 0.62], lampOn: false, amb: 1.0 },
+  night: { sunColor: [0.46, 0.52, 0.80], ambColor: [0.24, 0.24, 0.40], lampOn: true,  amb: 1.0 }
 };
 
 const glow = (col, stop) =>
@@ -119,7 +129,12 @@ function refreshPalette() {
     leaf: b.leaf, flower: b.flower,
     petal: isNight ? b.petalNight : b.petalDay,
     skyCss: isNight ? b.skyNight : b.skyDay,
-    fog: isNight ? b.fogNight : b.fogDay,
+    // daytime haze warmed toward the sun, the way a low sun tints distance
+    fog: isNight ? b.fogNight : [
+      b.fogDay[0] * 0.55 + 0.99 * 0.45,
+      b.fogDay[1] * 0.55 + 0.80 * 0.45,
+      b.fogDay[2] * 0.55 + 0.56 * 0.45
+    ],
     sunColor: b.sunColor || t.sunColor,
     ambColor: b.ambColor || t.ambColor,
     lampOn: b.interior ? true : t.lampOn,
@@ -1106,10 +1121,10 @@ function buildOutdoors(amb, p, rng) {
   }
 
   // clouds drifting high above
-  for (let i = 0; i < 14; i++) {
-    const cx = -30 + rng() * 60, cz = -30 + rng() * 60;
-    const cy = 17 + rng() * 5;
-    const w = 3 + rng() * 5, d = 3 + rng() * 5;
+  for (let i = 0; i < 20; i++) {
+    const cx = -40 + rng() * 80, cz = -40 + rng() * 80;
+    const cy = 16 + rng() * 7;
+    const w = 5 + rng() * 9, d = 5 + rng() * 9;
     box(cx, cy, cz, cx + w, cy + 1, cz + d, isNight ? '#3b2f52' : '#ffffff', amb);
   }
 
@@ -1351,6 +1366,44 @@ function updatePetals(dt, p) {
    input at all. Only the HUD is interactive. */
 let yaw = 0.3, pitch = 0.22, targetYaw = 0.3, targetPitch = 0.22;
 
+/* ---------------- screen-space sun effects ----------------
+   Projects the sun through the live camera and hands its screen position
+   to CSS, which draws the bloom and the shafts. Like a shader pack's
+   screen-space rays, they fade out as the sun leaves the frame and
+   vanish entirely once it is behind the camera. */
+const gameEl = document.querySelector('.game');
+let sunVis = 0;
+
+function updateSunFx(eye, t) {
+  const D = 90;
+  const wx = eye[0] + RAY_DIR[0] * D;
+  const wy = eye[1] + RAY_DIR[1] * D;
+  const wz = eye[2] + RAY_DIR[2] * D;
+
+  const cw = mvp[3] * wx + mvp[7] * wy + mvp[11] * wz + mvp[15];
+  let target = 0, sx = 50, sy = 30;
+
+  if (cw > 0) {
+    const cx = mvp[0] * wx + mvp[4] * wy + mvp[8] * wz + mvp[12];
+    const cy = mvp[1] * wx + mvp[5] * wy + mvp[9] * wz + mvp[13];
+    const ndcX = cx / cw, ndcY = cy / cw;
+    sx = (ndcX + 1) * 50;
+    sy = (1 - ndcY) * 50;
+    // full strength on screen, tapering off just outside it
+    const edge = Math.max(Math.abs(ndcX), Math.abs(ndcY));
+    target = edge < 1 ? 1 : Math.max(0, 1 - (edge - 1) / 0.6);
+  }
+
+  // ease so the shafts swell and fade rather than blink
+  sunVis += (target - sunVis) * 0.06;
+  const st = gameEl.style;
+  st.setProperty('--sun-x', sx.toFixed(2) + '%');
+  st.setProperty('--sun-y', sy.toFixed(2) + '%');
+  st.setProperty('--sun-vis', (sunVis * (isNight ? 0.35 : 1)).toFixed(3));
+  st.setProperty('--ray-spin', ((t || 0) * 0.0016).toFixed(2) + 'deg');
+  st.setProperty('--warmth', isNight ? '0.34' : '0.9');
+}
+
 /* ---------------- render loop ---------------- */
 const mvp = mat4(), proj = mat4(), view = mat4();
 let last = 0;
@@ -1398,6 +1451,7 @@ function render(t) {
   perspective(proj, (52 * Math.PI) / 180, canvas.width / canvas.height, 0.1, 120);
   lookAt(view, eye, target, [0, 1, 0]);
   multiply(mvp, proj, view);
+  updateSunFx(eye, t);
 
   gl.clearColor(0, 0, 0, 0);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);

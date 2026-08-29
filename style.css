@@ -56,11 +56,77 @@ button { font: inherit; color: inherit; cursor: pointer; background: none; borde
   pointer-events: none;   /* scenery only — the HUD takes all input */
 }
 
+/* Screen-space sun effects, anchored to the sun's projected position.
+   --sun-x/--sun-y are written each frame by the renderer, and --sun-vis
+   fades them out as the sun leaves the frame — the same way a shader
+   pack's screen-space rays behave. */
+/* Atmospheric grade: lavender aloft, gold at the horizon — the colour
+   signature of a low sun. Sits over the scene so it tints terrain and
+   sky alike, the way real aerial perspective does. */
+.atmosphere {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  opacity: var(--warmth, 0);
+  /* Fades out by the horizon so the ground and character keep their
+     contrast — grading the whole frame flattened the picture. */
+  background: linear-gradient(
+    to bottom,
+    rgba(120, 100, 200, 0.52) 0%,
+    rgba(196, 146, 202, 0.40) 18%,
+    rgba(255, 184, 120, 0.44) 30%,
+    rgba(255, 146, 72, 0.34) 39%,
+    rgba(255, 168, 104, 0.14) 48%,
+    rgba(255, 190, 140, 0.03) 57%,
+    transparent 66%
+  );
+  mix-blend-mode: screen;
+}
+
+.sunglow,
+.godrays {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  mix-blend-mode: screen;
+}
+
+.sunglow {
+  opacity: var(--sun-vis, 0);
+  background: radial-gradient(
+    circle at var(--sun-x, 50%) var(--sun-y, 30%),
+    rgba(255, 244, 214, 0.72) 0%,
+    rgba(255, 216, 150, 0.40) 5%,
+    rgba(255, 186, 110, 0.16) 14%,
+    rgba(255, 170, 90, 0) 34%
+  );
+}
+
+.godrays {
+  opacity: calc(var(--sun-vis, 0) * 0.8);
+  background: repeating-conic-gradient(
+    from var(--ray-spin, 0deg) at var(--sun-x, 50%) var(--sun-y, 30%),
+    rgba(255, 232, 178, 0.16) 0deg 1.4deg,
+    rgba(255, 232, 178, 0) 1.4deg 5.6deg
+  );
+  -webkit-mask-image: radial-gradient(circle at var(--sun-x, 50%) var(--sun-y, 30%),
+    #000 0%, rgba(0, 0, 0, 0.75) 16%, transparent 58%);
+  mask-image: radial-gradient(circle at var(--sun-x, 50%) var(--sun-y, 30%),
+    #000 0%, rgba(0, 0, 0, 0.75) 16%, transparent 58%);
+}
+
 .vignette {
   position: absolute;
   inset: 0;
   pointer-events: none;
+  z-index: 3;
   background: radial-gradient(ellipse at 50% 45%, transparent 35%, rgba(6, 4, 12, 0.55) 100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .godrays { display: none; }
 }
 
 /* ---------------- world info ---------------- */

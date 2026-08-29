@@ -243,7 +243,7 @@ button { font: inherit; color: inherit; cursor: pointer; background: none; borde
 .panel-stage {
   position: absolute;
   inset: 0;
-  padding: 70px 1rem 205px clamp(1rem, 3vw, 2.5rem);
+  padding: 64px 1rem 168px clamp(1rem, 3vw, 2.5rem);
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -253,7 +253,7 @@ button { font: inherit; color: inherit; cursor: pointer; background: none; borde
 
 .panel {
   display: none;
-  width: min(460px, 48vw);
+  width: clamp(420px, 34vw, 760px);
   max-height: 100%;
   flex-direction: column;
   pointer-events: auto;
@@ -680,4 +680,37 @@ button { font: inherit; color: inherit; cursor: pointer; background: none; borde
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
+}
+
+
+/* ---------------- wide screens ----------------
+   Everything here is sized in px, so on a large monitor the whole
+   interface shrank into a corner and left the middle of the frame
+   empty. Scale the panel, its text and the HUD up with the viewport. */
+@media (min-width: 1500px) {
+  .panel-body { padding: 1.5rem; gap: 1.25rem; }
+  .panel-bar { padding: 0.9rem 1.2rem; }
+  .panel-bar h2 { font-size: 0.86rem; }
+
+  .profile-blurb, .repo-desc, .lore, .book-text { font-size: 1.12rem; }
+  .stat dd, .item li, .adv li, .adv-sub, .level-detail, .book-links { font-size: 1.06rem; }
+  .stat dt { font-size: 0.64rem; width: 92px; }
+  .item h3, .adv h3, .level h3 { font-size: 0.84rem; }
+  .avatar { width: 78px; height: 78px; background-size: 58px auto; }
+  .item-icon, .adv-icon { width: 54px; height: 54px; font-size: 1.6rem; }
+  .cell { width: 50px; height: 50px; font-size: 1.35rem; }
+  .mc-btn { font-size: 0.7rem; padding: 0.8rem 1.25rem; }
+
+  .slot { width: 60px; height: 60px; font-size: 1.7rem; }
+  .xp-strip { width: min(600px, 38vw); }
+  .heart { width: 16px; height: 15px; }
+  .world-info { font-size: 0.68rem; }
+  .menu { width: min(520px, 30vw); }
+  .menu-btn { font-size: 0.76rem; padding: 1.1rem 0.9rem; }
+}
+
+@media (min-width: 2000px) {
+  .panel { width: clamp(560px, 32vw, 900px); }
+  .slot { width: 68px; height: 68px; font-size: 1.9rem; }
+  .profile-blurb, .repo-desc, .lore, .book-text { font-size: 1.22rem; }
 }

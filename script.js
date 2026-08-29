@@ -1568,11 +1568,13 @@ function initBees() {
 
 function buildBee(bx, by, bz, heading, flap, amb) {
   const S = 1 / 16;
-  const YEL = hexRGB('#e8bb44'), YEL_HI = hexRGB('#f2d074');
-  const STRIPE = hexRGB('#4a2e18'), FACE = hexRGB('#2e1c0e');
-  const EYE = hexRGB('#8fd8e8'), BLK = hexRGB('#1a1410'), WING = hexRGB('#eef2f5');
+  /* Deeper than the reference swatches look on their own: every face is
+     multiplied by the scene light, which washed the first attempt out to
+     pale tan. */
+  const YEL = hexRGB('#cf9a22'), YEL_HI = hexRGB('#e2b344');
+  const STRIPE = hexRGB('#33200d'), FACE = hexRGB('#241608');
+  const EYE = hexRGB('#7fd0e4'), BLK = hexRGB('#140f0a'), WING = hexRGB('#dfe6ec');
 
-  // local pixel coords, forward is +z; the pivot is the bee itself
   const part = (x0, y0, z0, x1, y1, z1, rgb) => {
     const c = [rgb[0] * amb, rgb[1] * amb, rgb[2] * amb];
     box(bx + x0 * S, by + y0 * S, bz + z0 * S,
@@ -1581,35 +1583,38 @@ function buildBee(bx, by, bz, heading, flap, amb) {
 
   setXform(bx, by, bz, 0, heading, 0);
 
-  // chunky body in bands of amber and dark brown
-  for (let i = 0; i < 5; i++) {
-    part(-3.5, -3.5, -5 + i * 2, 3.5, 3.5, -3 + i * 2, i % 2 ? STRIPE : YEL);
-  }
-  part(-3.5, 3.5, -4.9, 3.5, 3.9, 4.9, YEL_HI);        // fuzz along the back
+  /* Chunky, nearly cubic body: 8 wide, 7 tall, 9 long, banded amber and
+     dark brown so the stripes girdle it the way they do on the mob. */
+  const bands = [
+    [-4.5, -2.6, YEL], [-2.6, -1.2, STRIPE], [-1.2, 0.7, YEL],
+    [0.7, 2.1, STRIPE], [2.1, 4.5, YEL]
+  ];
+  for (const [z0, z1, col] of bands) part(-4, -3.5, z0, 4, 3.5, z1, col);
+  part(-4, 3.5, -4.5, 4, 3.9, 4.5, YEL_HI);            // fuzz along the top
 
-  // dark face plate with pale blue eyes
-  part(-3.5, -3.5, 4.9, 3.5, 3.5, 5.4, FACE);
-  part(-3.3, 0.1, 5.35, -1.5, 2.3, 5.6, EYE);
-  part(1.5, 0.1, 5.35, 3.3, 2.3, 5.6, EYE);
-  part(-1.1, -1.9, 5.35, 1.1, -0.9, 5.55, BLK);        // mandible
+  // broad dark face with big pale-blue eyes
+  part(-4, -3.5, 4.5, 4, 3.5, 5.1, FACE);
+  part(-3.5, -0.4, 5.05, -1.3, 2.4, 5.35, EYE);
+  part(1.3, -0.4, 5.05, 3.5, 2.4, 5.35, EYE);
+  part(-1.4, -2.8, 5.05, 1.4, -1.4, 5.3, BLK);         // mandible
 
-  part(-2.2, 3.6, 4.1, -1.5, 6.3, 4.8, BLK);           // antennae
-  part(1.5, 3.6, 4.1, 2.2, 6.3, 4.8, BLK);
-  part(-0.8, -0.6, -5, 0.8, 0.9, -7.1, BLK);           // stinger
-  for (const lz of [-2.6, 0.4]) {                      // legs
-    part(-3.4, -4.6, lz, -2.4, -3.4, lz + 1.4, BLK);
-    part(2.4, -4.6, lz, 3.4, -3.4, lz + 1.4, BLK);
+  part(-2.4, 3.9, 3.4, -1.6, 6.2, 4.2, BLK);           // antennae
+  part(1.6, 3.9, 3.4, 2.4, 6.2, 4.2, BLK);
+  part(-0.9, -0.8, -4.5, 0.9, 0.8, -6.4, BLK);         // stinger
+  for (const lz of [-2.4, 0.6]) {                      // legs
+    part(-3.6, -4.8, lz, -2.5, -3.4, lz + 1.3, BLK);
+    part(2.5, -4.8, lz, 3.6, -3.4, lz + 1.3, BLK);
   }
   clearXform();
 
-  /* Wings beat with mirrored roll about the bee's own centre. Roll is
-     applied before yaw in the vertex transform, so the pair stays
-     symmetrical whichever way the bee happens to be pointing. */
+  /* Wings: short, thin plates sitting on the back rather than the long
+     planks they were, and rolled in mirrored pairs. Roll is applied
+     before yaw, so the pair stays symmetrical whichever way it faces. */
   setXform(bx, by, bz, 0, heading, flap);
-  part(-7.6, 3.8, -3.6, -1.1, 4.3, 1.6, WING);
+  part(-5.4, 4.0, -2.6, -0.8, 4.3, 1.2, WING);
   clearXform();
   setXform(bx, by, bz, 0, heading, -flap);
-  part(1.1, 3.8, -3.6, 7.6, 4.3, 1.6, WING);
+  part(0.8, 4.0, -2.6, 5.4, 4.3, 1.2, WING);
   clearXform();
 }
 

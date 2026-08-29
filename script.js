@@ -1415,14 +1415,11 @@ function closePanel() {
   titleScreen.classList.remove('is-hidden');
 }
 
+/* A slot selects, it never deselects — one press is always enough.
+   Closing is the ✕ or Escape. */
 document.querySelectorAll('[data-panel]').forEach((el) => {
   if (el.tagName === 'A') return;                       // external links pass through
-  el.addEventListener('click', () => {
-    const name = el.dataset.panel;
-    const open = document.querySelector('.panel.is-active');
-    if (open && open.id === `panel-${name}`) closePanel();
-    else showPanel(name);
-  });
+  el.addEventListener('click', () => showPanel(el.dataset.panel));
 });
 
 document.querySelectorAll('.panel-close').forEach((b) => b.addEventListener('click', closePanel));

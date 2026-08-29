@@ -279,9 +279,14 @@ function uploadTexture(source) {
 const TILE = {
   SMOOTH: 0, SPECKLE: 1, STONE: 2, PLANK: 3, LOG: 4, LEAF: 5, WATER: 6, GRASS: 7,
   // full-colour tiles — drawn with a white tint so their own colours show
-  CHEST_TOP: 8, CHEST_SIDE: 9, CHEST_FRONT: 10
+  CHEST_TOP: 8, CHEST_SIDE: 9, CHEST_FRONT: 10,
+  // cut-out tiles: transparent background, alpha-tested when drawn
+  POPPY: 11, DANDELION: 12, CORNFLOWER: 13, AZURE: 14,
+  DIRT: 15
 };
-const ATLAS_COLS = 4, ATLAS_ROWS = 3, TILE_PX = 16;
+const ATLAS_COLS = 4, ATLAS_ROWS = 4, TILE_PX = 16;
+
+const FLOWER_TILES = [TILE.POPPY, TILE.DANDELION, TILE.CORNFLOWER, TILE.AZURE];
 
 function makeAtlas() {
   const c = document.createElement('canvas');
@@ -339,10 +344,24 @@ function makeAtlas() {
     for (let i = 0; i < TILE_PX; i++) px(ox + i, oy + j, 226 + Math.round(band) + Math.floor(rng() * 14));
   }
 
+  /* Grass top: clumped mottling in the spirit of the game's own block —
+     the flatter noise it had before read as static from above. */
   [ox, oy] = at(TILE.GRASS);
   for (let i = 0; i < TILE_PX; i++) for (let j = 0; j < TILE_PX; j++) {
-    const blade = rng() > 0.72 ? -30 : rng() > 0.4 ? 10 : 0;
-    px(ox + i, oy + j, 220 + Math.floor(rng() * 26) + blade);
+    const r = rng();
+    let v;
+    if (r < 0.14) v = 150 + rng() * 22;        // shaded tufts
+    else if (r < 0.44) v = 186 + rng() * 24;
+    else if (r < 0.80) v = 214 + rng() * 24;
+    else v = 242 + rng() * 13;                 // catching the light
+    px(ox + i, oy + j, Math.floor(v));
+  }
+
+  // dirt: coarser and blotchier than grass
+  [ox, oy] = at(TILE.DIRT);
+  for (let i = 0; i < TILE_PX; i++) for (let j = 0; j < TILE_PX; j++) {
+    const blot = rng() > 0.85 ? -40 : rng() > 0.62 ? -18 : 0;
+    px(ox + i, oy + j, 206 + Math.floor(rng() * 40) + blot);
   }
 
   /* ---- chest, painted in full colour ----
@@ -379,6 +398,34 @@ function makeAtlas() {
   R(fx + 7, fy + 4, 2, 5, '#3a3a3a');              // latch shadow
   R(fx + 7, fy + 4, 2, 4, '#b4b4b4');              // latch body
   R(fx + 7, fy + 5, 1, 2, '#dcdcdc');              // latch highlight
+
+  /* ---- flowers ----
+     Cut-outs on a transparent tile: a stem with a couple of leaves and
+     a head of petals. Drawn on crossed quads, so what is left blank
+     here is what gets discarded in the shader. */
+  const STEM = '#3f6b28', STEM_HI = '#4e8232', LEAF_G = '#355c22';
+
+  const flower = (tile, petal, petalHi, heart) => {
+    const [bx, by] = at(tile);
+    R(bx + 7, by + 8, 2, 8, STEM);
+    R(bx + 7, by + 9, 1, 6, STEM_HI);
+    R(bx + 5, by + 10, 2, 2, LEAF_G);
+    R(bx + 9, by + 12, 2, 2, LEAF_G);
+    // head
+    R(bx + 5, by + 4, 6, 4, petal);
+    R(bx + 6, by + 3, 4, 1, petal);
+    R(bx + 6, by + 8, 4, 1, petal);
+    R(bx + 4, by + 5, 1, 2, petal);
+    R(bx + 11, by + 5, 1, 2, petal);
+    R(bx + 6, by + 4, 2, 2, petalHi);
+    R(bx + 9, by + 6, 1, 1, petalHi);
+    if (heart) R(bx + 7, by + 5, 2, 2, heart);
+  };
+
+  flower(TILE.POPPY, '#c9241c', '#e33a2c', '#241008');
+  flower(TILE.DANDELION, '#e0c92f', '#f4e356', null);
+  flower(TILE.CORNFLOWER, '#4a5fc4', '#6d80e0', '#2b3782');
+  flower(TILE.AZURE, '#4fa8d8', '#7fc8ea', '#f0f0f0');
 
   return c;
 }
@@ -1045,6 +1092,35 @@ function buildStorageRoom(amb, p, rng) {
 }
 
 
+/* A flower: two quads crossed in an X, each emitted twice with opposite
+   winding so it reads from any angle without turning off backface
+   culling. The tile's transparent background is alpha-tested away. */
+function buildFlower(x, z, tile, amb) {
+  const s = 0.42, h = 0.86, y = 0;
+  const uv = TILE_UVS[tile];
+  const u0 = uv[0], v0 = uv[1], u1 = uv[2], v1 = uv[3];
+  const L = LIGHT.f;
+  const r = L[0] * amb, g = L[1] * amb, b = L[2] * amb;
+
+  const plane = (ax, az, bx, bz) => {
+    vertex(x + ax, y, z + az, r, g, b, u0, v1);
+    vertex(x + bx, y, z + bz, r, g, b, u1, v1);
+    vertex(x + bx, y + h, z + bz, r, g, b, u1, v0);
+    vertex(x + ax, y, z + az, r, g, b, u0, v1);
+    vertex(x + bx, y + h, z + bz, r, g, b, u1, v0);
+    vertex(x + ax, y + h, z + az, r, g, b, u0, v0);
+    // same quad wound the other way, so it is visible from behind too
+    vertex(x + bx, y, z + bz, r, g, b, u0, v1);
+    vertex(x + ax, y, z + az, r, g, b, u1, v1);
+    vertex(x + ax, y + h, z + az, r, g, b, u1, v0);
+    vertex(x + bx, y, z + bz, r, g, b, u0, v1);
+    vertex(x + ax, y + h, z + az, r, g, b, u1, v0);
+    vertex(x + bx, y + h, z + bz, r, g, b, u0, v0);
+  };
+  plane(-s, -s, s, s);
+  plane(-s, s, s, -s);
+}
+
 /* ---------------- distant mountains ----------------
    Built from a height map and meshed like voxel terrain: every cell
    emits its top, and a side only where the neighbouring column is
@@ -1222,19 +1298,19 @@ function buildOutdoors(amb, p, rng) {
       if (!inFine) groundCell(x, z, STEP, true);
     }
   }
-  // the bank where grass meets water
+  /* The bank reads as the side of a grass block: a dirt face with a thin
+     green lip along the top, the way the block is textured. */
   for (let z = -GROUND; z < GROUND; z++) {
-    box(WATER_X, -0.4, z, WATER_X + 0.06, 0, z + 1, p.dirt, amb, 'lr');
+    box(WATER_X - 0.02, -1.1, z, WATER_X + 0.08, -0.16, z + 1, p.dirt, amb, 'lr', TILE.DIRT);
+    box(WATER_X - 0.03, -0.16, z, WATER_X + 0.09, 0, z + 1, p.grassAlt, amb, 'lr', TILE.GRASS);
   }
 
-  // flowers and tufts scattered on the grass
-  for (let i = 0; i < 90; i++) {
-    const x = WATER_X + 1 + rng() * (GROUND - WATER_X - 2);
-    const z = -GROUND + rng() * (GROUND * 2 - 1);
-    if (Math.abs(x) < 1.2 && Math.abs(z) < 1.2) continue;   // keep the clearing tidy
-    const c = p.flower[Math.floor(rng() * 3)];
-    box(x, 0, z, x + 0.07, 0.22, z + 0.07, '#2f5a2b', amb);           // stem
-    box(x - 0.02, 0.22, z - 0.02, x + 0.09, 0.44, z + 0.09, c, amb);  // bloom
+  // flowers scattered on the grass, kept where they can be seen
+  for (let i = 0; i < 150; i++) {
+    const x = WATER_X + 1.5 + rng() * (26 - WATER_X);
+    const z = -24 + rng() * 48;
+    if (Math.abs(x) < 1.6 && Math.abs(z) < 1.6) continue;   // keep the clearing tidy
+    buildFlower(x, z, FLOWER_TILES[Math.floor(rng() * FLOWER_TILES.length)], amb);
   }
 
   /* Cloud bank. Flat blocky slabs, kept low and pushed out past the
@@ -1678,7 +1754,7 @@ function render(t) {
   // world — block atlas, fully opaque
   gl.enableVertexAttribArray(loc.aUV);
   gl.uniform1f(loc.uUseTex, 1.0);
-  gl.uniform1f(loc.uAlphaTest, 0.0);
+  gl.uniform1f(loc.uAlphaTest, 1.0);   // flower cut-outs; every other tile is opaque
   gl.bindTexture(gl.TEXTURE_2D, atlasTex);
   gl.enableVertexAttribArray(loc.aUV);
   gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);

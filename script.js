@@ -190,7 +190,7 @@ void main() {
   gl_PointSize = uPointSize;
   vColor = aColor;
   vUV = aUV;
-  vFog = clamp((clip.w - 14.0) / 34.0, 0.0, 1.0) * uFogMul;
+  vFog = clamp((clip.w - 18.0) / 68.0, 0.0, 1.0) * uFogMul;
 }`;
 
 const FS = `
@@ -318,10 +318,19 @@ function makeAtlas() {
     for (let j = 0; j < TILE_PX; j++) px(ox + i, oy + j, 228 + Math.floor(rng() * 18) + streak);
   }
 
+  /* Leaves: deep shadow gaps between clumps of mid and lit foliage.
+     The old version only spanned 174-252, which read as flat noise —
+     the real thing runs almost the full range. */
   [ox, oy] = at(TILE.LEAF);
   for (let i = 0; i < TILE_PX; i++) for (let j = 0; j < TILE_PX; j++) {
-    const hole = rng() > 0.80 ? -58 : rng() > 0.6 ? -22 : 0;
-    px(ox + i, oy + j, 232 + Math.floor(rng() * 20) + hole);
+    const r = rng();
+    let v;
+    if (r < 0.17) v = 68 + rng() * 22;         // gaps you can see through
+    else if (r < 0.41) v = 104 + rng() * 30;   // shaded leaves
+    else if (r < 0.71) v = 148 + rng() * 32;   // mid
+    else if (r < 0.91) v = 188 + rng() * 32;   // catching light
+    else v = 230 + rng() * 25;                 // highlights
+    px(ox + i, oy + j, Math.floor(v));
   }
 
   [ox, oy] = at(TILE.WATER);
@@ -441,6 +450,7 @@ function clearXform() { xform = null; }
    instead of growing JS arrays — used for the per-frame character mesh so
    the render loop allocates nothing. */
 let sink = null;
+let noTess = false;   // distant geometry skips per-block texture tiling
 
 /* Writes one vertex. Scalars only — this runs thousands of times per
    frame for the character, so it must not allocate. */
@@ -484,8 +494,8 @@ const TILE_UVS = (function () {
 /* Splits a face into roughly block-sized cells so the texture tiles at a
    consistent scale instead of stretching across large walls. */
 function face(ox, oy, oz, dux, duy, duz, dvx, dvy, dvz, r, g, b, light, amb, tile, aoLow) {
-  const nu = Math.max(1, Math.round(Math.hypot(dux, duy, duz)));
-  const nv = Math.max(1, Math.round(Math.hypot(dvx, dvy, dvz)));
+  const nu = noTess ? 1 : Math.max(1, Math.round(Math.hypot(dux, duy, duz)));
+  const nv = noTess ? 1 : Math.max(1, Math.round(Math.hypot(dvx, dvy, dvz)));
   const uv = TILE_UVS[tile] || TILE_UVS[0];
   const u0 = uv[0], v0 = uv[1], u1 = uv[2], v1 = uv[3];
   const cr = r * light[0] * amb, cg = g * light[1] * amb, cb = b * light[2] * amb;
@@ -1034,6 +1044,106 @@ function buildStorageRoom(amb, p, rng) {
   }
 }
 
+
+/* ---------------- distant mountains ----------------
+   Built from a height map and meshed like voxel terrain: every cell
+   emits its top, and a side only where the neighbouring column is
+   lower — and only spanning the difference. Emitting full columns
+   would have cost tens of thousands of vertices apiece. */
+function buildMountain(cx, cz, radius, peak, rock, rockDark, snowCol, amb) {
+  noTess = true;
+  const STEP = 3;
+  const n = Math.floor(radius / STEP);
+  const hm = [];
+
+  for (let i = -n; i <= n; i++) {
+    hm[i + n] = [];
+    for (let j = -n; j <= n; j++) {
+      const d = Math.hypot(i, j) / n;
+      let h = 0;
+      if (d <= 1) {
+        const ridge = 0.72 + 0.28 * Math.sin(i * 0.8 + cx) * Math.cos(j * 0.7 + cz);
+        h = Math.max(0, Math.round(peak * Math.pow(1 - d, 1.45) * ridge));
+      }
+      hm[i + n][j + n] = h;
+    }
+  }
+  const at = (i, j) => (hm[i + n] && hm[i + n][j + n] !== undefined ? hm[i + n][j + n] : 0);
+
+  for (let i = -n; i <= n; i++) {
+    for (let j = -n; j <= n; j++) {
+      const h = at(i, j);
+      if (h <= 0) continue;
+      const x0 = cx + i * STEP, z0 = cz + j * STEP;
+      const x1 = x0 + STEP, z1 = z0 + STEP;
+      const band = ((i + j) & 1) ? rock : rockDark;
+      const cap = h > peak * 0.70 ? snowCol : band;
+
+      box(x0, h - 0.4, z0, x1, h, z1, cap, amb, 't', TILE.STONE);
+      const side = (di, dj, face) => {
+        const nb = at(i + di, j + dj);
+        if (nb >= h) return;
+        box(x0, nb, z0, x1, h, z1, band, amb, face, TILE.STONE);
+      };
+      side(0, 1, 'f'); side(0, -1, 'b'); side(-1, 0, 'l'); side(1, 0, 'r');
+    }
+  }
+  noTess = false;
+}
+
+/* A watchtower: stone footing, timber shaft, overhanging lookout. */
+function buildTower(tx, tz, amb, p) {
+  const stone = '#8d8d8d', stoneDk = '#767676';
+  const beam = '#5f4224', plank = '#a5793f', roof = '#7a3f2a';
+  box(tx - 0.4, -0.2, tz - 0.4, tx + 3.4, 1.2, tz + 3.4, stone, amb, 'tfbslr', TILE.STONE);
+  box(tx, 1.2, tz, tx + 3, 9, tz + 3, plank, amb, 'tfbslr', TILE.PLANK);
+  for (const [ox, oz] of [[0, 0], [2.6, 0], [0, 2.6], [2.6, 2.6]]) {
+    box(tx + ox, 1.2, tz + oz, tx + ox + 0.4, 9.4, tz + oz + 0.4, beam, amb, 'tfbslr', TILE.LOG);
+  }
+  box(tx - 0.5, 6.2, tz - 0.5, tx + 3.5, 6.6, tz + 3.5, plank, amb, 'tfbslr', TILE.PLANK);
+  box(tx - 0.7, 9.4, tz - 0.7, tx + 3.7, 10.1, tz + 3.7, roof, amb, 'tfbslr', TILE.PLANK);
+  box(tx + 0.3, 10.1, tz + 0.3, tx + 2.7, 10.8, tz + 2.7, stoneDk, amb, 'tfbslr', TILE.PLANK);
+  // lit window at the top
+  emissive = p.lampOn;
+  box(tx + 1, 7.2, tz + 2.98, tx + 2, 8.4, tz + 3.06, '#ffd98a', amb, 'tfbslr', TILE.SMOOTH);
+  emissive = false;
+}
+
+/* A well: mossy ring, water, two posts and a little roof. */
+function buildWell(wx, wz, amb, p) {
+  const stone = '#8a8a8a', stoneDk = '#6f6f6f', beam = '#5f4224', roof = '#7a3f2a';
+  for (const [ox, oz, w, d] of [[0, 0, 3, 0.5], [0, 2.5, 3, 0.5], [0, 0.5, 0.5, 2], [2.5, 0.5, 0.5, 2]]) {
+    box(wx + ox, 0, wz + oz, wx + ox + w, 1.1, wz + oz + d, stone, amb, 'tfbslr', TILE.STONE);
+  }
+  box(wx + 0.5, 0, wz + 0.5, wx + 2.5, 0.75, wz + 2.5, p.water, amb, 't', TILE.WATER);
+  box(wx + 0.2, 1.1, wz + 1.2, wx + 0.6, 3.4, wz + 1.6, beam, amb, 'tfbslr', TILE.LOG);
+  box(wx + 2.4, 1.1, wz + 1.2, wx + 2.8, 3.4, wz + 1.6, beam, amb, 'tfbslr', TILE.LOG);
+  box(wx - 0.3, 3.4, wz - 0.3, wx + 3.3, 3.9, wz + 3.3, roof, amb, 'tfbslr', TILE.PLANK);
+  box(wx + 1.2, 2.9, wz + 1.2, wx + 1.8, 3.4, wz + 1.8, stoneDk, amb, 'tfbslr', TILE.SMOOTH);
+}
+
+/* A fenced crop plot. */
+function buildFarm(fx, fz, amb, p, rng) {
+  const soil = '#5b3f28', soilWet = '#43301f', post = '#6b4a28';
+  const crop = ['#8fbe4a', '#a8cc55', '#c9c04a'];
+  for (let x = 0; x < 7; x++) {
+    for (let z = 0; z < 5; z++) {
+      box(fx + x, -0.15, fz + z, fx + x + 1, 0.05, fz + z + 1,
+          z % 2 ? soilWet : soil, amb, 't', TILE.SPECKLE);
+      if (z % 2 === 0 && rng() > 0.2) {
+        box(fx + x + 0.3, 0.05, fz + z + 0.3, fx + x + 0.7, 0.75, fz + z + 0.7,
+            crop[Math.floor(rng() * 3)], amb, 'tfbslr', TILE.SMOOTH);
+      }
+    }
+  }
+  for (let x = 0; x <= 7; x++) {
+    box(fx + x, 0, fz - 0.4, fx + x + 0.25, 1.1, fz - 0.15, post, amb, 'tfbslr', TILE.LOG);
+    box(fx + x, 0, fz + 5.15, fx + x + 0.25, 1.1, fz + 5.4, post, amb, 'tfbslr', TILE.LOG);
+  }
+  box(fx, 0.75, fz - 0.35, fx + 7.25, 0.95, fz - 0.2, post, amb, 'tfbslr', TILE.LOG);
+  box(fx, 0.75, fz + 5.2, fx + 7.25, 0.95, fz + 5.35, post, amb, 'tfbslr', TILE.LOG);
+}
+
 /* A chest. The texture carries the outline, planks, lid seam and latch,
    so this is one box plus a thin plate for the latched front face.
    Tinted white so the tile's own colours come through unmodified. */
@@ -1082,18 +1192,34 @@ function buildOutdoors(amb, p, rng) {
   for (const [hx, hz] of houses) addShadow(hx + 3.5, hz + 3, 6.5, 0.9);
   addShadow(0, 0, 1.1, 1.0);   // the character
 
-  // ground: grass to the east, a sunken water basin to the west
-  for (let x = -GROUND; x < GROUND; x++) {
-    for (let z = -GROUND; z < GROUND; z++) {
-      if (x < WATER_X) {
-        box(x, -0.35, z, x + 1, -0.2, z + 1, p.water, amb, 't', TILE.WATER);
-      } else {
-        // hashed variation, not a strict checkerboard, so it reads organic
-        const n = (Math.imul(x * 73856093 ^ z * 19349663, 0x45d9f3b) >>> 28) % 3;
-        const base = n === 0 ? p.grass : n === 1 ? p.grassAlt : p.grassAlt2;
-        const dark = shadowAt(x + 0.5, z + 0.5);
-        box(x, -1, z, x + 1, 0, z + 1, darken(base, 1 - dark), amb, 't', TILE.GRASS);
-      }
+  /* Ground, at two levels of detail. Near the clearing every block is
+     its own tile with its own baked shadow; past that they merge into
+     coarse untiled patches. Distance and haze hide the difference, and
+     it removes well over half the cells — this loop dominated the
+     rebuild, since each cell also samples every shadow caster. */
+  const FINE = 21, STEP = 3;
+
+  const groundCell = (x, z, size, coarse) => {
+    if (x < WATER_X) {
+      box(x, -0.35, z, x + size, -0.2, z + size, p.water, amb, 't', TILE.WATER);
+      return;
+    }
+    // hashed variation, not a strict checkerboard, so it reads organic
+    const n = (Math.imul(x * 73856093 ^ z * 19349663, 0x45d9f3b) >>> 28) % 3;
+    const base = n === 0 ? p.grass : n === 1 ? p.grassAlt : p.grassAlt2;
+    const dark = shadowAt(x + size / 2, z + size / 2);
+    noTess = coarse;
+    box(x, -1, z, x + size, 0, z + size, darken(base, 1 - dark), amb, 't', TILE.GRASS);
+    noTess = false;
+  };
+
+  for (let x = -FINE; x < FINE; x++) {
+    for (let z = -FINE; z < FINE; z++) groundCell(x, z, 1, false);
+  }
+  for (let x = -GROUND; x < GROUND; x += STEP) {
+    for (let z = -GROUND; z < GROUND; z += STEP) {
+      const inFine = x >= -FINE && x + STEP <= FINE && z >= -FINE && z + STEP <= FINE;
+      if (!inFine) groundCell(x, z, STEP, true);
     }
   }
   // the bank where grass meets water
@@ -1111,19 +1237,47 @@ function buildOutdoors(amb, p, rng) {
     box(x - 0.02, 0.22, z - 0.02, x + 0.09, 0.44, z + 0.09, c, amb);  // bloom
   }
 
-  // clouds drifting high above
-  for (let i = 0; i < 20; i++) {
-    const cx = -40 + rng() * 80, cz = -40 + rng() * 80;
-    const cy = 16 + rng() * 7;
-    const w = 5 + rng() * 9, d = 5 + rng() * 9;
-    box(cx, cy, cz, cx + w, cy + 1, cz + d, '#ffffff', amb);
+  /* Cloud bank. Flat blocky slabs, kept low and pushed out past the
+     trees: the view only opens about ten degrees above the horizon, so
+     anything high and close sits above the frame entirely. */
+  noTess = true;
+  for (let i = 0; i < 30; i++) {
+    const ang = rng() * Math.PI * 2;
+    const rad = 46 + rng() * 46;
+    const cx = Math.cos(ang) * rad, cz = Math.sin(ang) * rad;
+    const cy = 8.5 + rng() * 5.5;
+    const w = 8 + rng() * 15, d = 7 + rng() * 13;
+    box(cx, cy, cz, cx + w, cy + 1.3, cz + d, '#ffffff', amb, 'tfbslr', TILE.SMOOTH);
+    // a second lobe so they read as clouds rather than plain slabs
+    if (rng() > 0.35) {
+      box(cx + w * 0.28, cy, cz - d * 0.45, cx + w * 0.92, cy + 1.3, cz + d * 0.25,
+          '#f4f6fb', amb, 'tfbslr', TILE.SMOOTH);
+    }
+    if (rng() > 0.6) {
+      box(cx - w * 0.2, cy + 1.3, cz + d * 0.2, cx + w * 0.45, cy + 2.3, cz + d * 0.8,
+          '#ffffff', amb, 'tfbslr', TILE.SMOOTH);
+    }
   }
+  noTess = false;
 
   /* Cherry trees, kept well clear of the clearing so the camera has
      room to orbit without a trunk in its face. */
   for (const [tx, tz] of innerTrees) buildTree(tx, tz, rng, amb, p, true);
   for (const [tx, tz] of outerTrees) buildTree(tx, tz, rng, amb, p, false);
   for (const [hx, hz] of houses) buildHouse(hx, hz, amb, p);
+
+  /* A ridge on the horizon, then a few landmarks around the village. */
+  const rock = p.rock || '#7f8288';
+  const rockDark = p.rockDark || '#6b6e74';
+  const snowCol = p.snow || '#e9edf4';
+  buildMountain(-32, -44, 24, 12, rock, rockDark, snowCol, amb);
+  buildMountain(6, -52, 28, 16, rock, rockDark, snowCol, amb);
+  buildMountain(40, -43, 20, 10, rock, rockDark, snowCol, amb);
+
+  buildTower(-22, -12, amb, p);
+  buildWell(13, -6, amb, p);
+  buildFarm(-30, 4, amb, p, rng);
+  buildFarm(18, -22, amb, p, rng);
   // the character lives in its own buffer so it can be re-posed per frame
 
 }
@@ -1202,13 +1356,13 @@ const FACE_MASKS = (function () {
 })();
 
 function buildTree(tx, tz, rng, amb, p, big) {
-  const h = big ? 9 + Math.floor(rng() * 3) : 5 + Math.floor(rng() * 4);
+  const h = big ? 3 + Math.floor(rng() * 2) : 2 + Math.floor(rng() * 3);
   for (let y = 0; y < h; y++) {
     box(tx, y, tz, tx + 1, y + 1, tz + 1, y % 2 ? p.trunk : '#3d2a1e', amb, 'tfbslr', TILE.LOG);
   }
   // canopy: an ellipsoid of leaf blocks
   const rx = (big ? 4.6 : 2.5) + rng() * 1.2;
-  const ry = (big ? 2.0 : 1.6) + rng() * 0.6;
+  const ry = (big ? 1.7 : 1.4) + rng() * 0.5;
   const rz = (big ? 4.6 : 2.5) + rng() * 1.2;
   const cy = h + ry - 0.4;
   const reach = big ? 6 : 4;
